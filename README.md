@@ -43,7 +43,7 @@ Không phải mọi trang video đều dùng HLS. Trang chỉ dùng DASH/MP4, n�
 
 ## Tiến độ tải
 
-Giao diện dùng một nút cho mỗi video: **Tải xuống → Hủy tải → Tải xuống** sau khi hủy hoặc hoàn tất. Khi xong, nhấn **Lưu file về máy** để lưu video. Bố cục theo kiểu MeTube: thanh đầu tối màu, thanh nhập URL liền nút bấm, hai danh sách **Đang tải / Đã hoàn tất** dạng bảng với các cột tên, tiến độ, tốc độ, thời gian còn lại và nút thao tác. Nút ↓ là **Tải xuống**, chuyển thành × **Hủy tải** khi chạy. File xong tự chuyển sang **Đã hoàn tất**. URL dài được thu gọn trong **Liên kết nguồn**. Có nút đổi sáng/tối ở thanh đầu và bố cục riêng trên điện thoại.
+Giao diện dùng một nút cho mỗi video: **Tải xuống → Hủy tải → Tải xuống** sau khi hủy hoặc hoàn tất. Khi xong, nhấn **Lưu file về máy** để lưu video. Bố cục theo kiểu MeTube: thanh đầu tối màu, thanh nhập URL liền nút bấm, hai danh sách **Có thể tải / Đã hoàn tất** dạng bảng với các cột tên, tiến độ, tốc độ, thời gian còn lại và nút thao tác. Nút ↓ là **Tải xuống**, chuyển thành × **Hủy tải** khi chạy. File xong tự chuyển sang **Đã hoàn tất**. Liên kết M3U8 hiện trực tiếp dưới ô tên video, tự xuống dòng khi dài và có thể bấm mở. Có nút đổi sáng/tối ở thanh đầu và bố cục riêng trên điện thoại.
 
 Sau khi tìm được playlist, nhập **Tên video** rồi nhấn **Tải xuống**. Không cần nhập đuôi file: ứng dụng tự dùng đuôi của file thực tế, kể cả MP4 sau bước sửa đầu PNG. Để trống sẽ dùng `video`. Tên được áp dụng cho cả file trong volume (mỗi tác vụ có thư mục riêng) và file lưu về trình duyệt. Ký tự không hợp lệ được làm sạch; tên tối đa 200 ký tự đầu vào và được rút gọn để phù hợp giới hạn tên file.
 
