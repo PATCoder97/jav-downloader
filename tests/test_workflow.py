@@ -32,6 +32,22 @@ class Workflow(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(await app.read_video_code(page), 'SAMPLE-123')
                 await page.set_content('<p>Video without a code</p>')
                 self.assertEqual(await app.read_video_code(page), '')
+                cases = [
+                    ('<p>Sample [ DEMO-123 ] description [OTHER-456]</p>', 'DEMO-123'),
+                    ('<p>No code here</p><p>[SAMPLE-456] Description</p>', 'SAMPLE-456'),
+                    ('<p>[<strong>DEMO-789</strong>] Description</p>', 'DEMO-789'),
+                    ('<p>No brackets</p>', ''),
+                    ('<p>[] [IGNORE-123]</p>', ''),
+                    ('<div><p>[IGNORE-123]</p></div>', ''),
+                ]
+                for markup, expected in cases:
+                    with self.subTest(markup=markup):
+                        await page.set_content('<div id="film-content-wrapper">' + markup + '</div>')
+                        self.assertEqual(await app.read_video_code(page), expected)
+                await page.set_content('<span class="video-code">PRIMARY-123</span><div id="film-content-wrapper"><p>[FALLBACK-456]</p></div>')
+                self.assertEqual(await app.read_video_code(page), 'PRIMARY-123')
+                await page.set_content('<span class="video-code"> </span><div id="film-content-wrapper"><p>[FALLBACK-456]</p></div>')
+                self.assertEqual(await app.read_video_code(page), 'FALLBACK-456')
             finally:
                 await browser.close()
 

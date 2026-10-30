@@ -43,7 +43,7 @@ Không phải mọi trang video đều dùng HLS. Trang chỉ dùng DASH/MP4, n�
 
 ## Tiến độ tải
 
-Khi quét trang, nếu có phần tử `#video > div.video-info > span.video-code` hoặc `.video-code`, ứng dụng lấy nội dung văn bản để điền sẵn **Tên video**. Nếu không có phần tử hoặc nội dung trống thì ô tên để trống. Có thể sửa hoặc xóa tên trước khi tải. Quy tắc này chỉ đọc trường mã trên trang đã mở, không tự đoán mã từ URL hoặc tiêu đề.
+Khi quét trang, ứng dụng ưu tiên văn bản tại `#video > div.video-info > span.video-code` hoặc `.video-code` để điền sẵn **Tên video**. Nếu không có mã ở đó, ứng dụng đọc các đoạn `#film-content-wrapper > p` theo thứ tự và lấy nội dung cặp `[...]` đầu tiên tìm thấy, bỏ dấu ngoặc và khoảng trắng thừa. Không có mã hoặc cặp ngoặc đầu tiên trống thì để trống. Có thể sửa hoặc xóa tên trước khi tải. Quy tắc này chỉ đọc các trường trên trang đã mở, không tự đoán mã từ URL hoặc tiêu đề.
 
 Giao diện dùng một nút cho mỗi video: **Tải xuống → Hủy tải → Tải xuống** sau khi hủy hoặc hoàn tất. Khi xong, nhấn **Lưu file về máy** để lưu video. Bố cục theo kiểu MeTube: thanh đầu tối màu, thanh nhập URL liền nút bấm, hai danh sách **Có thể tải / Đã hoàn tất** dạng bảng với các cột tên, tiến độ, tốc độ, thời gian còn lại và nút thao tác. Nút ↓ là **Tải xuống**, chuyển thành × **Hủy tải** khi chạy. File xong tự chuyển sang **Đã hoàn tất**. Liên kết M3U8 hiện trực tiếp dưới ô tên video, tự xuống dòng khi dài và có thể bấm mở. Có nút đổi sáng/tối ở thanh đầu và bố cục riêng trên điện thoại.
 

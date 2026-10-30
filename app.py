@@ -72,9 +72,16 @@ async def health():
 async def read_video_code(page):
     try:
         return await page.evaluate(r'''() => {
+            const clean = text => (text || '').replace(/\s+/g, ' ').trim().slice(0, 200);
             const element = document.querySelector('#video > div.video-info > span.video-code')
                 || document.querySelector('.video-code');
-            return (element?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+            const code = clean(element?.textContent);
+            if (code) return code;
+            for (const paragraph of document.querySelectorAll('#film-content-wrapper > p')) {
+                const match = (paragraph.textContent || '').match(/\[([^\[\]]*)\]/);
+                if (match) return clean(match[1]);
+            }
+            return '';
         }''')
     except BrowserError:
         return ''
