@@ -224,6 +224,9 @@ class Workflow(unittest.IsolatedAsyncioTestCase):
                             try:
                                 page = await browser.new_page()
                                 await page.goto(f'http://127.0.0.1:{web_port}')
+                                await page.locator('#theme').click()
+                                self.assertEqual(await page.evaluate('document.documentElement.dataset.theme'), 'dark')
+                                await page.locator('#theme').click()
                                 rendered = await page.evaluate('''() => {
                                   const bar = document.createElement('progress'); bar.max = 100;
                                   const details = document.createElement('p'), message = document.createElement('p');
@@ -255,6 +258,10 @@ class Workflow(unittest.IsolatedAsyncioTestCase):
                                 await page.get_by_role('button', name='Tải xuống', exact=True).click(timeout=45000)
                                 link = page.get_by_role('link', name='Lưu file về máy')
                                 await link.wait_for(timeout=30000)
+                                self.assertEqual(await page.locator('#completed article').count(), 1)
+                                self.assertEqual(await page.locator('#results article').count(), 0)
+                                if screenshots:
+                                    await page.screenshot(path=str(Path(screenshots) / 'completed.png'), full_page=True)
                                 self.assertEqual(await page.locator('article progress').get_attribute('value'), '100')
                                 filename = await link.get_attribute('download')
                                 self.assertEqual(Path(filename).stem, 'Bài mẫu 2026')
@@ -270,6 +277,8 @@ class Workflow(unittest.IsolatedAsyncioTestCase):
                                     self.assertEqual(await page.locator('article button').count(), 1)
                                     await page.get_by_role('button', name='Hủy tải', exact=True).click()
                                     await page.get_by_text('Đã hủy tải.', exact=True).wait_for(timeout=10000)
+                                    self.assertEqual(await page.locator('#results article').count(), 1)
+                                    self.assertEqual(await page.locator('#completed article').count(), 0)
                                     self.assertTrue(await page.get_by_role('button', name='Tải xuống', exact=True).is_enabled())
                             finally:
                                 await browser.close()
