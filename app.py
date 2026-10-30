@@ -2,7 +2,6 @@ import asyncio
 import ipaddress
 import json
 import math
-import shutil
 import signal
 import os
 import socket
@@ -188,11 +187,34 @@ def fragment_concurrency():
         return 8
 
 
+def cleanup_download(key):
+    for path in DOWNLOADS.glob(f'.job-{key}.*'):
+        if path.is_file() or path.is_symlink():
+            path.unlink(missing_ok=True)
+
+
+def publish_download(source, filename):
+    """Publish a complete file without overwriting another job or existing file."""
+    name = safe_video_name(filename)
+    index = 0
+    while True:
+        suffix = f' ({index})' if index else ''
+        destination = DOWNLOADS / (name + suffix + source.suffix)
+        try:
+            # Atomic exclusive creation on the same volume, without copying video bytes.
+            os.link(source, destination)
+        except FileExistsError:
+            index += 1
+            continue
+        source.unlink()
+        return destination
+
+
 async def download(key, stream, filename='video'):
     try:
         await run_download(key, stream, filename)
     except asyncio.CancelledError:
-        await asyncio.to_thread(shutil.rmtree, DOWNLOADS / key, True)
+        await asyncio.to_thread(cleanup_download, key)
         jobs[key].update(status='cancelled', speed=None, eta=None)
 
 
@@ -238,7 +260,7 @@ async def repair_video(source):
     offset = await asyncio.to_thread(find_ts_offset, source)
     if offset is None:
         return source
-    temporary = source.with_name('.repairing.mp4')
+    temporary = source.with_name(source.stem + '.repairing.mp4')
     final = source.with_suffix('.mp4')
     if temporary.exists() or (final != source and final.exists()):
         raise ValueError('File MP4 hoặc file sửa tạm đã tồn tại; giữ nguyên file gốc.')
@@ -268,9 +290,9 @@ async def repair_video(source):
 async def run_download(key, stream, filename='video'):
     async with gate:
         jobs[key]['status'] = 'downloading'
-        target = DOWNLOADS / key
+        target = DOWNLOADS
         target.mkdir(parents=True, exist_ok=True)
-        args = ['yt-dlp', '--ignore-config', '--no-playlist', '--quiet', '--progress', '--newline', '--progress-template', 'download:__PROGRESS__%(progress)j', '--socket-timeout', '20', '--retries', '2', '--hls-prefer-native', '--restrict-filenames', '--max-filesize', '2G', '-o', str(target / 'video.%(ext)s')]
+        args = ['yt-dlp', '--ignore-config', '--no-playlist', '--quiet', '--progress', '--newline', '--progress-template', 'download:__PROGRESS__%(progress)j', '--socket-timeout', '20', '--retries', '2', '--hls-prefer-native', '--restrict-filenames', '--max-filesize', '2G', '-o', str(target / f'.job-{key}.%(ext)s')]
         args += ['--concurrent-fragments', str(fragment_concurrency())]
         for name, value in stream['headers'].items():
             args += ['--add-header', f'{name}:{value}']
@@ -290,15 +312,13 @@ async def run_download(key, stream, filename='video'):
                 async for line in process.stdout:
                     update_progress(jobs[key], line.decode('utf-8', errors='replace').strip())
                 await process.wait()
-            files = [f for f in target.glob('video.*') if f.suffix not in ('.part', '.ytdl')]
+            files = [f for f in target.glob(f'.job-{key}.*') if f.suffix not in ('.part', '.ytdl')]
             if process.returncode or len(files) != 1:
                 raise ValueError('Tải thất bại: link có thể hết hạn, cần cookie hoặc FFmpeg, hoặc bị giới hạn truy cập.')
             jobs[key].update(status='processing', speed=None, eta=None)
             output = await repair_video(files[0])
-            renamed = target / (safe_video_name(filename) + output.suffix)
-            if renamed != output:
-                os.replace(output, renamed)
-                output = renamed
+            output = publish_download(output, filename)
+            cleanup_download(key)
             jobs[key].update(status='done', percent=100, eta=0, speed=None, file=str(output), filename=output.name)
         except BaseException as e:
             if process and process.returncode is None:
@@ -344,7 +364,7 @@ async def cancel_download(key: str):
             pass
     # A queued task can be cancelled before its coroutine starts.
     if job['status'] not in ('done', 'error', 'cancelled'):
-        await asyncio.to_thread(shutil.rmtree, DOWNLOADS / key, True)
+        await asyncio.to_thread(cleanup_download, key)
         job.update(status='cancelled', speed=None, eta=None)
     return {'status': job['status']}
 

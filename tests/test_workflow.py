@@ -21,6 +21,24 @@ from playwright.async_api import async_playwright
 
 
 class Workflow(unittest.IsolatedAsyncioTestCase):
+    async def test_flat_output_and_simultaneous_name_collisions(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(app, 'DOWNLOADS', Path(tmp)):
+            root = Path(tmp)
+            existing = root / 'Sample.mp4'
+            existing.write_bytes(b'existing video')
+            sources = []
+            for i in range(6):
+                source = root / f'.job-test{i}.mp4'
+                source.write_bytes(f'video {i}'.encode())
+                sources.append(source)
+            outputs = await asyncio.gather(*(asyncio.to_thread(app.publish_download, source, 'Sample') for source in sources))
+            self.assertEqual(len(set(outputs)), 6)
+            self.assertEqual({p.name for p in outputs}, {f'Sample ({i}).mp4' for i in range(1, 7)})
+            self.assertEqual(existing.read_bytes(), b'existing video')
+            self.assertEqual({p.read_bytes() for p in outputs}, {f'video {i}'.encode() for i in range(6)})
+            self.assertTrue(all(p.parent == root for p in outputs))
+            self.assertFalse(any(root.glob('.job-*')))
+
     async def test_video_code_selector_and_missing_value(self):
         async with async_playwright() as p:
             browser = await p.chromium.launch(executable_path=os.environ.get('CHROMIUM_PATH'))
@@ -108,7 +126,7 @@ class Workflow(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(ValueError):
                 await app.repair_video(invalid)
             self.assertEqual(invalid.read_bytes(), original)
-            self.assertFalse((root / '.repairing.mp4').exists())
+            self.assertFalse((root / 'invalid.repairing.mp4').exists())
             invalid.write_bytes(prefix)
             with self.assertRaises(ValueError):
                 app.find_ts_offset(invalid)
@@ -138,6 +156,8 @@ class Workflow(unittest.IsolatedAsyncioTestCase):
             return url
 
         with tempfile.TemporaryDirectory() as tmp, patch.object(app, 'DOWNLOADS', Path(tmp)), patch.object(app, 'public_url', valid), patch.object(asyncio, 'create_subprocess_exec', spawn):
+            (Path(tmp) / 'keep.mp4').write_bytes(b'complete')
+            (Path(tmp) / '.job-other.mp4.part').write_bytes(b'other job')
             app.streams['running-test'] = {'url': 'https://example.com/video.m3u8', 'headers': {}}
             job = await app.start_download('running-test')
             key = job['id']
@@ -146,10 +166,12 @@ class Workflow(unittest.IsolatedAsyncioTestCase):
                     break
                 await asyncio.sleep(0.01)
             self.assertEqual(app.jobs[key].get('downloaded_bytes'), 10)
-            (Path(tmp) / key / 'video.ts.part').write_bytes(b'partial')
+            (Path(tmp) / f'.job-{key}.ts.part').write_bytes(b'partial')
             self.assertEqual((await app.cancel_download(key))['status'], 'cancelled')
             self.assertIsNotNone(processes[0].returncode)
-            self.assertFalse((Path(tmp) / key).exists())
+            self.assertFalse(any(Path(tmp).glob(f'.job-{key}.*')))
+            self.assertEqual((Path(tmp) / 'keep.mp4').read_bytes(), b'complete')
+            self.assertEqual((Path(tmp) / '.job-other.mp4.part').read_bytes(), b'other job')
             with self.assertRaises(app.HTTPException):
                 await app.file_download(key)
 
@@ -234,6 +256,8 @@ class Workflow(unittest.IsolatedAsyncioTestCase):
                     self.assertGreater(app.jobs[key]['downloaded_bytes'], 0)
                     self.assertEqual(app.jobs[key]['percent'], 100)
                     output = app.jobs[key]['file']
+                    self.assertEqual(Path(output).parent, root / 'downloads')
+                    self.assertFalse(any((root / 'downloads').glob('.job-*')))
                     probe = subprocess.check_output(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', output], text=True)
                     self.assertGreater(float(probe), 1)
                     response = await app.file_download(key)
@@ -304,6 +328,7 @@ class Workflow(unittest.IsolatedAsyncioTestCase):
                                 self.assertIn(filename, unquote(saved.headers['content-disposition']))
                                 job_id = (await link.get_attribute('href')).split('/')[-1]
                                 self.assertEqual(Path(app.jobs[job_id]['file']).name, filename)
+                                self.assertEqual(Path(app.jobs[job_id]['file']).parent, root / 'downloads')
                                 self.assertGreater(len(await saved.body()), 1000)
                                 with patch.object(app, 'gate', asyncio.Semaphore(0)):
                                     await page.get_by_role('button', name='Tải xuống', exact=True).click()

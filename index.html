@@ -97,7 +97,7 @@ function streamCard(stream) {
         if(state.status==='error') throw Error(state.error);
         if(state.status==='done'){
           const a=document.createElement('a');a.className='save';a.href='/api/files/'+job.id;a.textContent='Lưu file về máy';a.download=state.filename;
-          message.append(a);details.textContent=bytes(state.downloaded_bytes);completed.append(card);refreshCounts();break;
+          message.textContent='Đã tải xong: '+state.filename+' ';message.append(a);details.textContent=bytes(state.downloaded_bytes);completed.append(card);refreshCounts();break;
         }
         await new Promise(resolve=>setTimeout(resolve,1000));
       }
