@@ -1,6 +1,7 @@
 """Offline integration: synthetic HLS, real Chromium, real yt-dlp and FFmpeg."""
 import asyncio
 import functools
+import json
 import http.server
 import os
 from pathlib import Path
@@ -17,6 +18,26 @@ from playwright.async_api import async_playwright
 
 
 class Workflow(unittest.IsolatedAsyncioTestCase):
+    async def test_progress_records(self):
+        job = {}
+        app.update_progress(job, '__PROGRESS__' + json.dumps({'status': 'downloading', 'downloaded_bytes': 1024, 'total_bytes': 4096, 'speed': 2048, 'eta': 2}))
+        self.assertEqual(job['percent'], 25)
+        self.assertEqual(job['speed'], 2048)
+        self.assertFalse(job['estimated'])
+        app.update_progress(job, '__PROGRESS__' + json.dumps({'status': 'downloading', 'fragment_index': 2, 'fragment_count': 10}))
+        self.assertEqual(job['percent'], 20)
+        self.assertTrue(job['estimated'])
+        app.update_progress(job, '__PROGRESS__' + json.dumps({'status': 'downloading', 'speed': float('nan'), 'total_bytes': -1}))
+        self.assertIsNone(job['percent'])
+        self.assertIsNone(job['speed'])
+        previous = job.copy()
+        for line in ('unrelated log', '__PROGRESS__invalid', '__PROGRESS__null'):
+            app.update_progress(job, line)
+        self.assertEqual(job, previous)
+        app.update_progress(job, '__PROGRESS__{"status":"finished","downloaded_bytes":4096}')
+        self.assertEqual(job['status'], 'processing')
+        self.assertEqual(job['percent'], 100)
+
     async def test_reject_private_and_non_http(self):
         for url in ('http://127.0.0.1/', 'http://169.254.169.254/', 'file:///etc/passwd', 'http://user:pass@example.com/'):
             with self.subTest(url=url), self.assertRaises(ValueError):
@@ -50,6 +71,8 @@ class Workflow(unittest.IsolatedAsyncioTestCase):
                     app.jobs[key] = {'status': 'queued'}
                     await app.download(key, app.streams[stream['id']])
                     self.assertEqual(app.jobs[key]['status'], 'done', app.jobs[key])
+                    self.assertGreater(app.jobs[key]['downloaded_bytes'], 0)
+                    self.assertEqual(app.jobs[key]['percent'], 100)
                     output = app.jobs[key]['file']
                     probe = subprocess.check_output(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', output], text=True)
                     self.assertGreater(float(probe), 1)
@@ -72,11 +95,25 @@ class Workflow(unittest.IsolatedAsyncioTestCase):
                             try:
                                 page = await browser.new_page()
                                 await page.goto(f'http://127.0.0.1:{web_port}')
+                                rendered = await page.evaluate('''() => {
+                                  const bar = document.createElement('progress'); bar.max = 100;
+                                  const details = document.createElement('p'), message = document.createElement('p');
+                                  renderProgress({status:'downloading', percent:25, downloaded_bytes:1048576, total_bytes:4194304, speed:1048576, eta:65}, bar, details, message);
+                                  const result = {value:bar.value, text:details.textContent};
+                                  renderProgress({status:'downloading', percent:null, speed:null, eta:null}, bar, details, message);
+                                  result.indeterminate = !bar.hasAttribute('value');
+                                  return result;
+                                }''')
+                                self.assertEqual(rendered['value'], 25)
+                                self.assertIn('1.00 MB/s', rendered['text'])
+                                self.assertIn('1:05', rendered['text'])
+                                self.assertTrue(rendered['indeterminate'])
                                 await page.locator('#url').fill(base + '/index.html')
                                 await page.locator('#scan').click()
                                 await page.locator('article button').click(timeout=45000)
                                 link = page.get_by_role('link', name='Lưu file về máy')
                                 await link.wait_for(timeout=30000)
+                                self.assertEqual(await page.locator('article progress').get_attribute('value'), '100')
                                 saved = await page.request.get(f'http://127.0.0.1:{web_port}' + await link.get_attribute('href'))
                                 self.assertEqual(saved.status, 200)
                                 self.assertGreater(len(await saved.body()), 1000)

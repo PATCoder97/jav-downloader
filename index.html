@@ -1,12 +1,70 @@
 <!doctype html>
 <html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Tải video HLS</title>
-<style>body{font:16px system-ui;max-width:850px;margin:60px auto;padding:20px;background:#101827;color:#e7edf7}input,button{font:inherit;padding:12px;border-radius:8px;border:1px solid #58677e}input{flex:1;min-width:0}button{cursor:pointer;background:#a5caff}form{display:flex;gap:10px}article{background:#202e43;padding:18px;margin:18px 0;border-radius:12px}code{display:block;overflow-wrap:anywhere;margin-bottom:12px}a{color:#a5caff}#status{white-space:pre-wrap}</style>
+<style>body{font:16px system-ui;max-width:850px;margin:60px auto;padding:20px;background:#101827;color:#e7edf7}input,button{font:inherit;padding:12px;border-radius:8px;border:1px solid #58677e}input{flex:1;min-width:0}button{cursor:pointer;background:#a5caff}form{display:flex;gap:10px}article{background:#202e43;padding:18px;margin:18px 0;border-radius:12px}code{display:block;overflow-wrap:anywhere;margin-bottom:12px}a{color:#a5caff}#status{white-space:pre-wrap}progress{display:block;width:100%;height:20px;margin-top:16px;accent-color:#a5caff}progress[hidden]{display:none}.details{font-variant-numeric:tabular-nums}</style>
 <h1>Tải video HLS</h1><p>Nhập URL trang video hoặc playlist M3U8 mà bạn sở hữu hoặc được phép tải. Không hỗ trợ DRM hay vượt đăng nhập.</p>
 <form id="form"><input id="url" type="url" required placeholder="https://example.com/video"><button id="scan">Tìm M3U8</button></form>
 <p id="status" role="status"></p><section id="results"></section>
 <script>
 const statusEl=document.querySelector('#status'),results=document.querySelector('#results');
 async function api(url,options={}){const r=await fetch(url,options);const d=await r.json();if(!r.ok)throw Error(typeof d.detail==='string'?d.detail:'Yêu cầu thất bại');return d;}
-document.querySelector('#form').onsubmit=async e=>{e.preventDefault();const button=document.querySelector('#scan');button.disabled=true;results.replaceChildren();statusEl.textContent='Đang mở trang và tìm video…';try{const data=await api('/api/scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:document.querySelector('#url').value})});statusEl.textContent=data.message||`Tìm thấy ${data.streams.length} playlist.`;for(const stream of data.streams){const card=document.createElement('article'),code=document.createElement('code'),download=document.createElement('button'),progress=document.createElement('p');code.textContent=stream.url;download.textContent='Tải video';download.onclick=async()=>{download.disabled=true;try{const job=await api('/api/download/'+stream.id,{method:'POST'});for(;;){const state=await api('/api/jobs/'+job.id);progress.textContent=({queued:'Đang chờ…',downloading:'Đang tải…',done:'Đã tải xong.',error:'Tải thất bại.'})[state.status];if(state.status==='error')throw Error(state.error);if(state.status==='done'){const a=document.createElement('a');a.href='/api/files/'+job.id;a.textContent='Lưu file về máy';a.download=state.filename;progress.append(' ',a);break;}await new Promise(r=>setTimeout(r,1500));}}catch(err){progress.textContent=err.message;}finally{download.disabled=false;}};card.append(code,download,progress);results.append(card);}}catch(err){statusEl.textContent=err.message;}finally{button.disabled=false;}};
+function bytes(n) {
+  if (!Number.isFinite(n) || n < 0) return '—';
+  const units = ['B', 'KB', 'MB', 'GB']; let i = 0;
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+  return `${n.toFixed(i ? 2 : 0)} ${units[i]}`;
+}
+function eta(n) {
+  if (!Number.isFinite(n) || n < 0) return '—';
+  n = Math.ceil(n);
+  return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`;
+}
+function renderProgress(state, bar, details, message) {
+  bar.hidden = false;
+  if (Number.isFinite(state.percent)) bar.value = state.percent;
+  else bar.removeAttribute('value');
+  const percent = Number.isFinite(state.percent) ? `${state.estimated && state.status === 'downloading' ? '≈ ' : ''}${state.percent.toFixed(1)}%` : 'Chưa rõ tổng dung lượng';
+  message.textContent = ({queued:'Đang chờ…', downloading:'Đang tải về máy chủ…', processing:'Đang xử lý video…', done:'Đã tải xong.', error:'Tải thất bại.'})[state.status] || '';
+  details.textContent = `${percent} · ${bytes(state.downloaded_bytes)} / ${bytes(state.total_bytes)} · ${bytes(state.speed)}/s · Còn ${eta(state.eta)}`;
+}
+function streamCard(stream) {
+  const card = document.createElement('article'), code = document.createElement('code');
+  const button = document.createElement('button'), bar = document.createElement('progress');
+  const details = document.createElement('p'), message = document.createElement('p');
+  code.textContent = stream.url; button.textContent = 'Tải video';
+  bar.max = 100; bar.hidden = true; bar.setAttribute('aria-label', 'Tiến độ tải video');
+  details.className = 'details'; message.setAttribute('role', 'status');
+  button.onclick = async () => {
+    button.disabled = true;
+    renderProgress({status:'queued', downloaded_bytes:0}, bar, details, message);
+    try {
+      const job = await api('/api/download/' + stream.id, {method:'POST'});
+      for (;;) {
+        const state = await api('/api/jobs/' + job.id);
+        renderProgress(state, bar, details, message);
+        if (state.status === 'error') throw Error(state.error);
+        if (state.status === 'done') {
+          const a = document.createElement('a');
+          a.href = '/api/files/' + job.id; a.textContent = 'Lưu file về máy'; a.download = state.filename;
+          message.append(' ', a); break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    } catch (err) { message.textContent = err.message; }
+    finally { button.disabled = false; }
+  };
+  card.append(code, button, bar, details, message);
+  return card;
+}
+document.querySelector('#form').onsubmit = async e => {
+  e.preventDefault();
+  const button = document.querySelector('#scan');
+  button.disabled = true; results.replaceChildren(); statusEl.textContent = 'Đang mở trang và tìm video…';
+  try {
+    const data = await api('/api/scan', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url:document.querySelector('#url').value})});
+    statusEl.textContent = data.message || `Tìm thấy ${data.streams.length} playlist.`;
+    for (const stream of data.streams) results.append(streamCard(stream));
+  } catch (err) { statusEl.textContent = err.message; }
+  finally { button.disabled = false; }
+};
 </script></html>

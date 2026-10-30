@@ -41,6 +41,10 @@ Quét khoảng 10–45 giây. Tối đa hai tác vụ chạy cùng lúc, hàng �
 
 Không phải mọi trang video đều dùng HLS. Trang chỉ dùng DASH/MP4, nội dung DRM hoặc player không tự phát có thể không tìm thấy playlist. Việc kiểm tra DNS chặn URL nội bộ ở bước quét là biện pháp cơ bản, không phải cơ chế cách ly mạng hoàn chỉnh cho redirect, DNS rebinding hoặc URL segment do playlist cung cấp. Chỉ dùng với nguồn bạn tin cậy trong môi trường cá nhân.
 
+## Tiến độ tải
+
+Mỗi video có thanh tiến độ, phần trăm, dung lượng đã tải/tổng dung lượng, tốc độ và thời gian còn lại; cập nhật khoảng mỗi giây. Đây là tiến độ tải về máy chủ Docker. Bước **Lưu file về máy** do trình duyệt quản lý riêng. Với HLS, tổng dung lượng và ETA có thể chỉ là ước tính (hiển thị `≈`); khi chưa có dữ liệu thì hiển thị `—` hoặc thanh chờ. Sau khi tải đủ dữ liệu, ứng dụng hiển thị trạng thái xử lý video và chỉ cung cấp file khi hoàn tất.
+
 ## Kiểm thử
 
 Test tạo video màu xanh dài 2 giây bằng FFmpeg, phục vụ trang HTML có JavaScript phát sinh request M3U8, chạy Chromium thật để phát hiện rồi tải bằng yt-dlp thật và kiểm tra thời lượng bằng ffprobe. Chỉ trong test, bộ kiểm tra URL được thay để cho phép máy chủ fixture loopback.

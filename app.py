@@ -1,5 +1,7 @@
 import asyncio
 import ipaddress
+import json
+import math
 import os
 import socket
 import uuid
@@ -106,24 +108,57 @@ async def scan(data: URLInput):
             await browser.close()
 
 
+def update_progress(job, line):
+    prefix = '__PROGRESS__'
+    if not line.startswith(prefix):
+        return
+    try:
+        event = json.loads(line[len(prefix):])
+    except (ValueError, TypeError):
+        return
+    if not isinstance(event, dict) or event.get('status') not in ('downloading', 'finished'):
+        return
+
+    def number(name):
+        value = event.get(name)
+        return value if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value >= 0 else None
+
+    downloaded = number('downloaded_bytes')
+    total = number('total_bytes') or number('total_bytes_estimate')
+    fragment = number('fragment_index')
+    fragments = number('fragment_count')
+    percent = None
+    if total and downloaded is not None:
+        percent = min(100, downloaded / total * 100)
+    elif fragments and fragment is not None:
+        percent = min(100, fragment / fragments * 100)
+    finished = event['status'] == 'finished'
+    job.update(status='processing' if finished else 'downloading', percent=100 if finished else percent,
+               downloaded_bytes=downloaded, total_bytes=total, estimated=not bool(number('total_bytes')),
+               speed=number('speed'), eta=number('eta'))
+
+
 async def download(key, stream):
     async with gate:
         jobs[key]['status'] = 'downloading'
         target = DOWNLOADS / key
         target.mkdir(parents=True, exist_ok=True)
-        args = ['yt-dlp', '--ignore-config', '--no-playlist', '--no-progress', '--socket-timeout', '20', '--retries', '2', '--hls-prefer-native', '--restrict-filenames', '--max-filesize', '2G', '-o', str(target / 'video.%(ext)s')]
+        args = ['yt-dlp', '--ignore-config', '--no-playlist', '--quiet', '--progress', '--newline', '--progress-template', 'download:__PROGRESS__%(progress)j', '--socket-timeout', '20', '--retries', '2', '--hls-prefer-native', '--restrict-filenames', '--max-filesize', '2G', '-o', str(target / 'video.%(ext)s')]
         for name, value in stream['headers'].items():
             args += ['--add-header', f'{name}:{value}']
         args += ['--', stream['url']]
         process = None
         try:
             await public_url(stream['url'])
-            process = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
-            await asyncio.wait_for(process.wait(), 1800)
+            process = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+            async with asyncio.timeout(1800):
+                async for line in process.stdout:
+                    update_progress(jobs[key], line.decode('utf-8', errors='replace').strip())
+                await process.wait()
             files = [f for f in target.glob('video.*') if f.suffix not in ('.part', '.ytdl')]
             if process.returncode or len(files) != 1:
                 raise ValueError('Tải thất bại: link có thể hết hạn, cần cookie hoặc FFmpeg, hoặc bị giới hạn truy cập.')
-            jobs[key].update(status='done', file=str(files[0]), filename=files[0].name)
+            jobs[key].update(status='done', percent=100, eta=0, speed=None, file=str(files[0]), filename=files[0].name)
         except Exception as e:
             if process and process.returncode is None:
                 process.kill()
@@ -135,10 +170,10 @@ async def download(key, stream):
 async def start_download(stream_id: str):
     if stream_id not in streams:
         raise HTTPException(404, 'Link đã hết phiên. Hãy quét lại.')
-    if sum(j['status'] in ('queued', 'downloading') for j in jobs.values()) >= 4:
+    if sum(j['status'] in ('queued', 'downloading', 'processing') for j in jobs.values()) >= 4:
         raise HTTPException(429, 'Hàng đợi đầy, hãy chờ tải xong.')
     key = uuid.uuid4().hex
-    jobs[key] = {'status': 'queued'}
+    jobs[key] = {'status': 'queued', 'percent': None, 'downloaded_bytes': 0, 'total_bytes': None, 'speed': None, 'eta': None}
     asyncio.create_task(download(key, streams[stream_id]))
     return {'id': key}
 
