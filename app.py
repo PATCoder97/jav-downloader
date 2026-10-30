@@ -156,6 +156,75 @@ async def download(key, stream):
         jobs[key].update(status='cancelled', speed=None, eta=None)
 
 
+def find_ts_offset(path):
+    with path.open('rb') as source:
+        data = source.read(2 * 1024 * 1024)
+    if not data.startswith(b'\x89PNG\r\n\x1a\n'):
+        return None
+    for offset in range(8, len(data) - 188 * 5):
+        if data[offset] == 0x47 and all(data[offset + 188 * i] == 0x47 for i in range(1, 6)):
+            return offset
+    raise ValueError('File có đầu PNG nhưng không tìm thấy MPEG-TS hợp lệ trong 2 MB đầu.')
+
+
+async def media_command(*args):
+    """Keep remux/probe subprocesses cancellable, including their children."""
+    process = None
+    spawn = asyncio.create_task(asyncio.create_subprocess_exec(
+        *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        start_new_session=True))
+    try:
+        try:
+            process = await asyncio.shield(spawn)
+        except asyncio.CancelledError:
+            process = await spawn
+            raise
+        async with asyncio.timeout(1800):
+            output, _ = await process.communicate()
+        if process.returncode:
+            raise ValueError('Không thể sửa hoặc xác minh video bằng FFmpeg/FFprobe.')
+        return output
+    except BaseException:
+        if process:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            await process.communicate()
+        raise
+
+
+async def repair_video(source):
+    offset = await asyncio.to_thread(find_ts_offset, source)
+    if offset is None:
+        return source
+    temporary = source.with_name('.repairing.mp4')
+    final = source.with_suffix('.mp4')
+    if temporary.exists() or (final != source and final.exists()):
+        raise ValueError('File MP4 hoặc file sửa tạm đã tồn tại; giữ nguyên file gốc.')
+    try:
+        await media_command('ffmpeg', '-nostdin', '-hide_banner', '-loglevel', 'error', '-n',
+                            '-skip_initial_bytes', str(offset), '-f', 'mpegts', '-i', str(source),
+                            '-map', '0:v:0', '-map', '0:a?', '-c', 'copy', '-movflags', '+faststart', str(temporary))
+        output = await media_command('ffprobe', '-v', 'error', '-show_entries',
+                                     'format=format_name,duration:stream=codec_type', '-of', 'json', str(temporary))
+        try:
+            data = json.loads(output)
+            duration = float(data['format']['duration'])
+            valid = ('mp4' in data['format']['format_name'] and math.isfinite(duration) and duration > 0
+                     and any(stream.get('codec_type') == 'video' for stream in data['streams']))
+        except (ValueError, KeyError, TypeError):
+            valid = False
+        if not valid:
+            raise ValueError('Video sau khi sửa không vượt qua kiểm tra; giữ nguyên file gốc.')
+        os.replace(temporary, final)
+        if source != final:
+            source.unlink()
+        return final
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 async def run_download(key, stream):
     async with gate:
         jobs[key]['status'] = 'downloading'
@@ -184,9 +253,11 @@ async def run_download(key, stream):
             files = [f for f in target.glob('video.*') if f.suffix not in ('.part', '.ytdl')]
             if process.returncode or len(files) != 1:
                 raise ValueError('Tải thất bại: link có thể hết hạn, cần cookie hoặc FFmpeg, hoặc bị giới hạn truy cập.')
-            jobs[key].update(status='done', percent=100, eta=0, speed=None, file=str(files[0]), filename=files[0].name)
+            jobs[key].update(status='processing', speed=None, eta=None)
+            output = await repair_video(files[0])
+            jobs[key].update(status='done', percent=100, eta=0, speed=None, file=str(output), filename=output.name)
         except BaseException as e:
-            if process:
+            if process and process.returncode is None:
                 try:
                     os.killpg(process.pid, signal.SIGKILL)
                 except ProcessLookupError:

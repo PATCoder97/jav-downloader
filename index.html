@@ -24,7 +24,7 @@ function renderProgress(state, bar, details, message) {
   if (Number.isFinite(state.percent)) bar.value = state.percent;
   else bar.removeAttribute('value');
   const percent = Number.isFinite(state.percent) ? `${state.estimated && state.status === 'downloading' ? '≈ ' : ''}${state.percent.toFixed(1)}%` : 'Chưa rõ tổng dung lượng';
-  message.textContent = ({queued:'Đang chờ…', downloading:'Đang tải về máy chủ…', processing:'Đang xử lý video…', cancelling:'Đang hủy tải…', cancelled:'Đã hủy tải.', done:'Đã tải xong.', error:'Tải thất bại.'})[state.status] || '';
+  message.textContent = ({queued:'Đang chờ…', downloading:'Đang tải về máy chủ…', processing:'Đang kiểm tra và sửa video nếu cần…', cancelling:'Đang hủy tải…', cancelled:'Đã hủy tải.', done:'Đã tải xong.', error:'Tải thất bại.'})[state.status] || '';
   details.textContent = `${percent} · ${bytes(state.downloaded_bytes)} / ${bytes(state.total_bytes)} · ${bytes(state.speed)}/s · Còn ${eta(state.eta)}`;
 }
 function streamCard(stream) {

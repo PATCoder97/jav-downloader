@@ -43,6 +43,8 @@ Không phải mọi trang video đều dùng HLS. Trang chỉ dùng DASH/MP4, n�
 
 ## Tiến độ tải
 
+Sau khi tải xong, ứng dụng đọc tối đa 2 MB đầu file để phát hiện chữ ký PNG và ít nhất 6 byte đồng bộ MPEG-TS cách nhau 188 byte. Nếu khớp, FFmpeg bỏ phần đầu PNG rồi đóng gói lại thành MP4 bằng `-c copy` (không mã hóa lại), bật `faststart` và kiểm tra bằng FFprobe: phải có video và thời lượng dương. Chỉ sau khi kiểm tra thành công mới thay file gốc và cho tải về. Nếu sửa lỗi thất bại, tác vụ báo lỗi và giữ file gốc; hủy tác vụ sẽ xóa file dở theo cơ chế hủy thông thường. File không có đầu PNG giữ nguyên. Đây là bước xử lý các file do ứng dụng tải mới; không tự quét thư mục MeTube `/mnt/metube`.
+
 Nhấn **Hủy tải** để hủy tác vụ đang chờ, đang tải hoặc đang xử lý. Ứng dụng dừng tiến trình tải và các tiến trình con, xóa thư mục file tải dở rồi hiển thị **Đã hủy tải**. Có thể nhấn **Tải video** để tải lại từ đầu. Nút này không xóa video đã tải thành công. Các kết quả quét được giữ lại khi quét thêm URL để không mất nút hủy của tác vụ đang chạy.
 
 Ứng dụng tải tối đa 8 đoạn HLS song song bằng yt-dlp (trước đây tải tuần tự). Có thể chỉnh biến môi trường `HLS_CONCURRENT_FRAGMENTS` từ 1 đến 32; thử 16 nếu nguồn cho phép, hoặc giảm xuống 2–4 nếu gặp HTTP 429/403. Tốc độ còn phụ thuộc máy chủ nguồn, đường truyền và ổ đĩa; tăng số đoạn không bảo đảm tăng tốc theo cùng tỷ lệ.

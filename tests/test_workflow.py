@@ -20,6 +20,57 @@ from playwright.async_api import async_playwright
 
 
 class Workflow(unittest.IsolatedAsyncioTestCase):
+    async def test_cancel_media_process_during_spawn(self):
+        original_spawn = asyncio.create_subprocess_exec
+        started = asyncio.Event()
+        processes = []
+
+        async def spawn(*args, **kwargs):
+            process = await original_spawn(sys.executable, '-c', 'import time; time.sleep(600)', **kwargs)
+            processes.append(process)
+            started.set()
+            await asyncio.sleep(0.02)
+            return process
+
+        with patch.object(asyncio, 'create_subprocess_exec', spawn):
+            task = asyncio.create_task(app.media_command('ffmpeg'))
+            await asyncio.wait_for(started.wait(), 5)
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await asyncio.wait_for(task, 5)
+            self.assertIsNotNone(processes[0].returncode)
+
+    async def test_png_prefixed_ts_repair(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ts = root / 'sample.ts'
+            subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'color=c=blue:s=160x90:r=10',
+                            '-t', '1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-f', 'mpegts', str(ts)], check=True)
+            self.assertIsNone(app.find_ts_offset(ts))
+            self.assertEqual(await app.repair_video(ts), ts)
+            prefix = b'\x89PNG\r\n\x1a\n' + b'fake image header' * 10
+            for suffix in ('.mp4', '.ts'):
+                source = root / ('broken' + suffix)
+                source.write_bytes(prefix + ts.read_bytes())
+                self.assertEqual(app.find_ts_offset(source), len(prefix))
+                output = await app.repair_video(source)
+                self.assertEqual(output.suffix, '.mp4')
+                self.assertFalse(output.read_bytes().startswith(b'\x89PNG'))
+                subprocess.run(['ffmpeg', '-v', 'error', '-i', str(output), '-f', 'null', '-'], check=True)
+                if source != output:
+                    self.assertFalse(source.exists())
+                output.unlink()
+            invalid = root / 'invalid.mp4'
+            invalid.write_bytes(prefix + (b'\x47' + b'\0' * 187) * 8)
+            original = invalid.read_bytes()
+            with self.assertRaises(ValueError):
+                await app.repair_video(invalid)
+            self.assertEqual(invalid.read_bytes(), original)
+            self.assertFalse((root / '.repairing.mp4').exists())
+            invalid.write_bytes(prefix)
+            with self.assertRaises(ValueError):
+                app.find_ts_offset(invalid)
+
     async def test_cancel_queued_and_not_started(self):
         app.streams['cancel-test'] = {'url': 'https://example.com/video.m3u8', 'headers': {}}
         for start in (False, True):
