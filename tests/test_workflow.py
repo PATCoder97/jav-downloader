@@ -21,6 +21,20 @@ from playwright.async_api import async_playwright
 
 
 class Workflow(unittest.IsolatedAsyncioTestCase):
+    async def test_video_code_selector_and_missing_value(self):
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(executable_path=os.environ.get('CHROMIUM_PATH'))
+            try:
+                page = await browser.new_page()
+                await page.set_content('<div id="video"><div class="video-info"><span class="video-code">  DEMO-037\n </span></div></div>')
+                self.assertEqual(await app.read_video_code(page), 'DEMO-037')
+                await page.set_content('<span class="video-code">SAMPLE-123</span>')
+                self.assertEqual(await app.read_video_code(page), 'SAMPLE-123')
+                await page.set_content('<p>Video without a code</p>')
+                self.assertEqual(await app.read_video_code(page), '')
+            finally:
+                await browser.close()
+
     async def test_safe_video_name(self):
         for value, expected in [('', 'video'), ('  ', 'video'), ('video.mp4', 'video'),
                                 ('Bài mẫu 2026.MP4', 'Bài mẫu 2026'), ('CON.mp4', '_CON'),
@@ -157,7 +171,7 @@ class Workflow(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'color=c=blue:s=160x90:r=10', '-t', '4', '-c:v', 'libx264', '-g', '10', '-pix_fmt', 'yuv420p', '-f', 'hls', '-hls_time', '1', str(root / 'sample.m3u8')], check=True)
-            (root / 'index.html').write_text('<html><body><video></video><script>setTimeout(()=>fetch("/sample.m3u8"),300)</script></body></html>')
+            (root / 'index.html').write_text('<html><body><span class="video-code">DEMO-037</span><video></video><script>setTimeout(()=>fetch("/sample.m3u8"),300)</script></body></html>')
             activity = {'active': 0, 'peak': 0}
             lock = threading.Lock()
 
@@ -195,6 +209,7 @@ class Workflow(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(len(result['streams']), 1)
                     stream = result['streams'][0]
                     self.assertEqual(stream['url'], base + '/sample.m3u8')
+                    self.assertEqual(stream['video_code'], 'DEMO-037')
                     key = 'integration'
                     app.jobs[key] = {'status': 'queued'}
                     await app.download(key, app.streams[stream['id']])
@@ -245,6 +260,8 @@ class Workflow(unittest.IsolatedAsyncioTestCase):
                                 await page.locator('article').wait_for(timeout=45000)
                                 self.assertEqual(await page.locator('article button').count(), 1)
                                 name_input = page.get_by_role('textbox', name='Tên video', exact=True)
+                                self.assertEqual(await name_input.input_value(), 'DEMO-037')
+                                self.assertEqual(await page.evaluate("streamCard({id:'missing',url:'https://example.com/sample.m3u8'}).querySelector('input').value"), '')
                                 await name_input.fill('Bài mẫu 2026.mp4', timeout=45000)
                                 await page.set_viewport_size({'width': 360, 'height': 800})
                                 self.assertTrue(await page.evaluate('document.documentElement.scrollWidth <= innerWidth'))

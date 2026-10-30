@@ -67,6 +67,7 @@ function streamCard(stream) {
 
   nameLabel.className='sr-only';nameLabel.textContent='Tên video';nameInput.type='text';nameInput.maxLength=200;
   nameInput.placeholder='Nhập tên video';nameInput.setAttribute('aria-label','Tên video');
+  nameInput.value=typeof stream.video_code==='string'?stream.video_code.slice(0,200):'';
   row.className='video-cell';button.className='action';setAction(button,false);
   bar.max=100;bar.hidden=true;bar.setAttribute('aria-label','Tiến độ tải video');
   details.className='details';message.className='message';message.setAttribute('role','status');

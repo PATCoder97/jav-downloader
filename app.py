@@ -69,6 +69,17 @@ async def health():
     return {'ok': True}
 
 
+async def read_video_code(page):
+    try:
+        return await page.evaluate(r'''() => {
+            const element = document.querySelector('#video > div.video-info > span.video-code')
+                || document.querySelector('.video-code');
+            return (element?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+        }''')
+    except BrowserError:
+        return ''
+
+
 @app.post('/api/scan')
 async def scan(data: URLInput):
     try:
@@ -117,12 +128,13 @@ async def scan(data: URLInput):
                     pass
             await page.evaluate('document.querySelectorAll("video").forEach(v => {v.muted=true; v.play().catch(()=>{});})')
             await page.wait_for_timeout(8000)
+            video_code = await read_video_code(page)
             results = []
             for url, headers in list(found.items())[:30]:
                 key = uuid.uuid4().hex
                 # Keep credentials in memory only, scoped to the detected origin.
                 streams[key] = {'url': url, 'headers': {k: v for k, v in headers.items() if k.lower() in ('referer', 'user-agent')}, 'origin': data.url}
-                results.append({'id': key, 'url': url})
+                results.append({'id': key, 'url': url, 'video_code': video_code})
             while len(streams) > 300:
                 streams.pop(next(iter(streams)))
             return {'streams': results, 'message': '' if results else 'Không tìm thấy M3U8. Trang có thể cần tương tác, đăng nhập hoặc không dùng HLS.'}
