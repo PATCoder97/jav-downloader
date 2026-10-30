@@ -32,6 +32,12 @@ function streamCard(stream) {
   const button = document.createElement('button'), bar = document.createElement('progress');
   const details = document.createElement('p'), message = document.createElement('p');
   const cancel = document.createElement('button');
+  const nameLabel = document.createElement('label'), nameInput = document.createElement('input');
+  nameLabel.textContent = 'Tên video: ';
+  nameInput.type = 'text'; nameInput.maxLength = 200;
+  nameInput.placeholder = 'Nhập tên video (không cần đuôi file)';
+  nameInput.setAttribute('aria-label', 'Tên video');
+  nameLabel.append(nameInput);
   cancel.textContent = 'Hủy tải'; cancel.hidden = true;
   let activeJob = null;
   cancel.onclick = async () => {
@@ -44,10 +50,13 @@ function streamCard(stream) {
   bar.max = 100; bar.hidden = true; bar.setAttribute('aria-label', 'Tiến độ tải video');
   details.className = 'details'; message.setAttribute('role', 'status');
   button.onclick = async () => {
-    button.disabled = true;
+    button.disabled = true; nameInput.disabled = true;
     renderProgress({status:'queued', downloaded_bytes:0}, bar, details, message);
     try {
-      const job = await api('/api/download/' + stream.id, {method:'POST'});
+      const job = await api('/api/download/' + stream.id, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({filename:nameInput.value})
+      });
       activeJob = job.id; cancel.hidden = false; cancel.disabled = false;
       for (;;) {
         const state = await api('/api/jobs/' + job.id);
@@ -62,9 +71,9 @@ function streamCard(stream) {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     } catch (err) { message.textContent = err.message; }
-    finally { button.disabled = false; cancel.hidden = true; activeJob = null; }
+    finally { button.disabled = false; nameInput.disabled = false; cancel.hidden = true; activeJob = null; }
   };
-  card.append(code, button, cancel, bar, details, message);
+  card.append(code, nameLabel, document.createElement('br'), button, cancel, bar, details, message);
   return card;
 }
 document.querySelector('#form').onsubmit = async e => {

@@ -13,6 +13,7 @@ import threading
 import time
 import unittest
 from unittest.mock import patch
+from urllib.parse import unquote
 
 import app
 import uvicorn
@@ -20,6 +21,17 @@ from playwright.async_api import async_playwright
 
 
 class Workflow(unittest.IsolatedAsyncioTestCase):
+    async def test_safe_video_name(self):
+        for value, expected in [('', 'video'), ('  ', 'video'), ('video.mp4', 'video'),
+                                ('Bài mẫu 2026.MP4', 'Bài mẫu 2026'), ('CON.mp4', '_CON'),
+                                ('a/b\\c:name?.ts', 'a-b-c-name-'), ('a\r\nb', 'ab')]:
+            self.assertEqual(app.safe_video_name(value), expected)
+        for value in ('../../escape', 'x' * 500, '漢' * 200, '\u202efilm'):
+            cleaned = app.safe_video_name(value)
+            self.assertEqual(Path(cleaned).name, cleaned)
+            self.assertNotIn('\\', cleaned)
+            self.assertLessEqual(len(cleaned.encode('utf-8')), 181)
+
     async def test_cancel_media_process_during_spawn(self):
         original_spawn = asyncio.create_subprocess_exec
         started = asyncio.Event()
@@ -227,12 +239,20 @@ class Workflow(unittest.IsolatedAsyncioTestCase):
                                 self.assertTrue(rendered['indeterminate'])
                                 await page.locator('#url').fill(base + '/index.html')
                                 await page.locator('#scan').click()
+                                name_input = page.get_by_role('textbox', name='Tên video', exact=True)
+                                await name_input.fill('Bài mẫu 2026.mp4', timeout=45000)
                                 await page.get_by_role('button', name='Tải video', exact=True).click(timeout=45000)
                                 link = page.get_by_role('link', name='Lưu file về máy')
                                 await link.wait_for(timeout=30000)
                                 self.assertEqual(await page.locator('article progress').get_attribute('value'), '100')
+                                filename = await link.get_attribute('download')
+                                self.assertEqual(Path(filename).stem, 'Bài mẫu 2026')
+                                self.assertTrue(await name_input.is_enabled())
                                 saved = await page.request.get(f'http://127.0.0.1:{web_port}' + await link.get_attribute('href'))
                                 self.assertEqual(saved.status, 200)
+                                self.assertIn(filename, unquote(saved.headers['content-disposition']))
+                                job_id = (await link.get_attribute('href')).split('/')[-1]
+                                self.assertEqual(Path(app.jobs[job_id]['file']).name, filename)
                                 self.assertGreater(len(await saved.body()), 1000)
                                 with patch.object(app, 'gate', asyncio.Semaphore(0)):
                                     await page.get_by_role('button', name='Tải video', exact=True).click()

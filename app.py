@@ -7,13 +7,14 @@ import signal
 import os
 import socket
 import uuid
+import unicodedata
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from playwright.async_api import async_playwright, TimeoutError as BrowserTimeout, Error as BrowserError
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 app = FastAPI()
 ROOT = Path(__file__).parent
@@ -26,6 +27,26 @@ gate = asyncio.Semaphore(2)
 
 class URLInput(BaseModel):
     url: str
+
+
+class DownloadInput(BaseModel):
+    filename: str = Field(default='', max_length=200)
+
+
+def safe_video_name(value):
+    name = unicodedata.normalize('NFKC', value).strip()
+    suffix = Path(name).suffix
+    if suffix.lower() in ('.mp4', '.mkv', '.webm', '.ts', '.mov', '.m4v', '.avi'):
+        name = name[:-len(suffix)]
+    name = ''.join('-' if char in '/\\<>:"|?*' else char
+                   for char in name if not unicodedata.category(char).startswith('C')).strip(' .')
+    while len(name.encode('utf-8')) > 180:
+        name = name[:-1]
+    name = name.strip(' .') or 'video'
+    reserved = {'CON', 'PRN', 'AUX', 'NUL', *(f'COM{i}' for i in range(1, 10)), *(f'LPT{i}' for i in range(1, 10))}
+    if name.split('.')[0].upper() in reserved:
+        name = '_' + name
+    return name
 
 
 async def public_url(url):
@@ -148,9 +169,9 @@ def fragment_concurrency():
         return 8
 
 
-async def download(key, stream):
+async def download(key, stream, filename='video'):
     try:
-        await run_download(key, stream)
+        await run_download(key, stream, filename)
     except asyncio.CancelledError:
         await asyncio.to_thread(shutil.rmtree, DOWNLOADS / key, True)
         jobs[key].update(status='cancelled', speed=None, eta=None)
@@ -225,7 +246,7 @@ async def repair_video(source):
         temporary.unlink(missing_ok=True)
 
 
-async def run_download(key, stream):
+async def run_download(key, stream, filename='video'):
     async with gate:
         jobs[key]['status'] = 'downloading'
         target = DOWNLOADS / key
@@ -255,6 +276,10 @@ async def run_download(key, stream):
                 raise ValueError('Tải thất bại: link có thể hết hạn, cần cookie hoặc FFmpeg, hoặc bị giới hạn truy cập.')
             jobs[key].update(status='processing', speed=None, eta=None)
             output = await repair_video(files[0])
+            renamed = target / (safe_video_name(filename) + output.suffix)
+            if renamed != output:
+                os.replace(output, renamed)
+                output = renamed
             jobs[key].update(status='done', percent=100, eta=0, speed=None, file=str(output), filename=output.name)
         except BaseException as e:
             if process and process.returncode is None:
@@ -269,14 +294,15 @@ async def run_download(key, stream):
 
 
 @app.post('/api/download/{stream_id}')
-async def start_download(stream_id: str):
+async def start_download(stream_id: str, data: DownloadInput | None = None):
     if stream_id not in streams:
         raise HTTPException(404, 'Link đã hết phiên. Hãy quét lại.')
     if sum(j['status'] in ('queued', 'downloading', 'processing', 'cancelling') for j in jobs.values()) >= 4:
         raise HTTPException(429, 'Hàng đợi đầy, hãy chờ tải xong.')
     key = uuid.uuid4().hex
     jobs[key] = {'status': 'queued', 'percent': None, 'downloaded_bytes': 0, 'total_bytes': None, 'speed': None, 'eta': None}
-    tasks[key] = asyncio.create_task(download(key, streams[stream_id]))
+    filename = safe_video_name(data.filename if data else '')
+    tasks[key] = asyncio.create_task(download(key, streams[stream_id], filename))
     tasks[key].add_done_callback(lambda task: tasks.pop(key, None))
     return {'id': key}
 

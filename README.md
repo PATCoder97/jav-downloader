@@ -43,6 +43,8 @@ Không phải mọi trang video đều dùng HLS. Trang chỉ dùng DASH/MP4, n�
 
 ## Tiến độ tải
 
+Sau khi tìm được playlist, nhập **Tên video** rồi nhấn **Tải video**. Không cần nhập đuôi file: ứng dụng tự dùng đuôi của file thực tế, kể cả MP4 sau bước sửa đầu PNG. Để trống sẽ dùng `video`. Tên được áp dụng cho cả file trong volume (mỗi tác vụ có thư mục riêng) và file lưu về trình duyệt. Ký tự không hợp lệ được làm sạch; tên tối đa 200 ký tự đầu vào và được rút gọn để phù hợp giới hạn tên file.
+
 Sau khi tải xong, ứng dụng đọc tối đa 2 MB đầu file để phát hiện chữ ký PNG và ít nhất 6 byte đồng bộ MPEG-TS cách nhau 188 byte. Nếu khớp, FFmpeg bỏ phần đầu PNG rồi đóng gói lại thành MP4 bằng `-c copy` (không mã hóa lại), bật `faststart` và kiểm tra bằng FFprobe: phải có video và thời lượng dương. Chỉ sau khi kiểm tra thành công mới thay file gốc và cho tải về. Nếu sửa lỗi thất bại, tác vụ báo lỗi và giữ file gốc; hủy tác vụ sẽ xóa file dở theo cơ chế hủy thông thường. File không có đầu PNG giữ nguyên. Đây là bước xử lý các file do ứng dụng tải mới; không tự quét thư mục MeTube `/mnt/metube`.
 
 Nhấn **Hủy tải** để hủy tác vụ đang chờ, đang tải hoặc đang xử lý. Ứng dụng dừng tiến trình tải và các tiến trình con, xóa thư mục file tải dở rồi hiển thị **Đã hủy tải**. Có thể nhấn **Tải video** để tải lại từ đầu. Nút này không xóa video đã tải thành công. Các kết quả quét được giữ lại khi quét thêm URL để không mất nút hủy của tác vụ đang chạy.
