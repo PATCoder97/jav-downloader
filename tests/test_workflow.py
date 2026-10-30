@@ -239,9 +239,20 @@ class Workflow(unittest.IsolatedAsyncioTestCase):
                                 self.assertTrue(rendered['indeterminate'])
                                 await page.locator('#url').fill(base + '/index.html')
                                 await page.locator('#scan').click()
+                                await page.locator('article').wait_for(timeout=45000)
+                                self.assertEqual(await page.locator('article button').count(), 1)
                                 name_input = page.get_by_role('textbox', name='Tên video', exact=True)
                                 await name_input.fill('Bài mẫu 2026.mp4', timeout=45000)
-                                await page.get_by_role('button', name='Tải video', exact=True).click(timeout=45000)
+                                await page.set_viewport_size({'width': 360, 'height': 800})
+                                self.assertTrue(await page.evaluate('document.documentElement.scrollWidth <= innerWidth'))
+                                screenshots = os.environ.get('SCREENSHOT_DIR')
+                                if screenshots:
+                                    Path(screenshots).mkdir(parents=True, exist_ok=True)
+                                    await page.screenshot(path=str(Path(screenshots) / 'mobile.png'), full_page=True)
+                                await page.set_viewport_size({'width': 1280, 'height': 900})
+                                if screenshots:
+                                    await page.screenshot(path=str(Path(screenshots) / 'desktop.png'), full_page=True)
+                                await page.get_by_role('button', name='Tải xuống', exact=True).click(timeout=45000)
                                 link = page.get_by_role('link', name='Lưu file về máy')
                                 await link.wait_for(timeout=30000)
                                 self.assertEqual(await page.locator('article progress').get_attribute('value'), '100')
@@ -255,10 +266,11 @@ class Workflow(unittest.IsolatedAsyncioTestCase):
                                 self.assertEqual(Path(app.jobs[job_id]['file']).name, filename)
                                 self.assertGreater(len(await saved.body()), 1000)
                                 with patch.object(app, 'gate', asyncio.Semaphore(0)):
-                                    await page.get_by_role('button', name='Tải video', exact=True).click()
+                                    await page.get_by_role('button', name='Tải xuống', exact=True).click()
+                                    self.assertEqual(await page.locator('article button').count(), 1)
                                     await page.get_by_role('button', name='Hủy tải', exact=True).click()
                                     await page.get_by_text('Đã hủy tải.', exact=True).wait_for(timeout=10000)
-                                    self.assertTrue(await page.get_by_role('button', name='Tải video', exact=True).is_enabled())
+                                    self.assertTrue(await page.get_by_role('button', name='Tải xuống', exact=True).is_enabled())
                             finally:
                                 await browser.close()
                     finally:

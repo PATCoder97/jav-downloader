@@ -1,90 +1,108 @@
 <!doctype html>
-<html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Tải video HLS</title>
-<style>body{font:16px system-ui;max-width:850px;margin:60px auto;padding:20px;background:#101827;color:#e7edf7}input,button{font:inherit;padding:12px;border-radius:8px;border:1px solid #58677e}input{flex:1;min-width:0}button{cursor:pointer;background:#a5caff}form{display:flex;gap:10px}article{background:#202e43;padding:18px;margin:18px 0;border-radius:12px}code{display:block;overflow-wrap:anywhere;margin-bottom:12px}a{color:#a5caff}#status{white-space:pre-wrap}progress{display:block;width:100%;height:20px;margin-top:16px;accent-color:#a5caff}progress[hidden]{display:none}.details{font-variant-numeric:tabular-nums}</style>
-<h1>Tải video HLS</h1><p>Nhập URL trang video hoặc playlist M3U8 mà bạn sở hữu hoặc được phép tải. Không hỗ trợ DRM hay vượt đăng nhập.</p>
-<form id="form"><input id="url" type="url" required placeholder="https://example.com/video"><button id="scan">Tìm M3U8</button></form>
-<p id="status" role="status"></p><section id="results"></section>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Video Downloader</title>
+<style>
+:root{color-scheme:light dark;--bg:#f5f7fa;--panel:#fff;--text:#1c293b;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--field:#fff;--red:#dc2626;--soft:#eff6ff}
+*{box-sizing:border-box}body{font:15px/1.5 system-ui,-apple-system,sans-serif;margin:0;background:var(--bg);color:var(--text)}main{max-width:920px;margin:48px auto;padding:0 24px}header{display:flex;align-items:center;gap:14px;margin-bottom:28px}.logo{display:grid;place-items:center;width:46px;height:46px;border-radius:14px;background:var(--blue);color:white;font-size:28px}h1{font-size:24px;letter-spacing:-.6px;margin:0}header p{margin:2px 0 0;color:var(--muted)}.panel,article{background:var(--panel);border:1px solid var(--line);border-radius:12px}.panel{padding:22px}label{display:block;font-size:13px;font-weight:600;margin-bottom:8px}input,button,a.save{font:inherit;border-radius:7px}input{width:100%;min-width:0;padding:11px 12px;border:1px solid var(--line);background:var(--field);color:var(--text)}input:focus-visible{outline:2px solid var(--blue);outline-offset:2px}input:disabled{opacity:.65}button,a.save{border:1px solid transparent;padding:11px 18px;background:var(--blue);color:#fff;font-weight:600;cursor:pointer;white-space:nowrap;text-decoration:none}button:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid var(--blue);outline-offset:3px}button:disabled{opacity:.6;cursor:wait}.cancel{background:transparent;color:var(--red);border-color:var(--red)}.input-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px}.hint{font-size:12px;color:var(--muted);margin:10px 0 0}#status{margin:14px 0 0;font-size:13px;color:var(--muted);white-space:pre-wrap}#status:empty{display:none}.section-title{display:flex;align-items:center;gap:10px;margin:28px 0 12px}.section-title h2{font-size:14px;margin:0}.count{font-size:12px;color:var(--muted);background:var(--line);padding:1px 8px;border-radius:20px}.empty{text-align:center;padding:42px 20px;color:var(--muted);border:1px dashed var(--line);border-radius:12px}.empty p{margin:4px 0;font-size:13px}article{padding:20px;margin:12px 0}.row-label{font-size:11px;letter-spacing:1px;color:var(--muted);margin-bottom:12px}.video-row{display:grid;grid-template-columns:minmax(0,1fr) 138px;align-items:end;gap:16px}.video-row label{margin:0}.video-row input{margin-top:6px}.action{width:100%}.message{font-size:13px;color:var(--muted);margin:12px 0 0}.details{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;margin:7px 0 0;overflow-wrap:anywhere}progress{display:block;appearance:none;width:100%;height:6px;border:0;border-radius:10px;overflow:hidden;margin-top:16px;accent-color:var(--blue)}progress::-webkit-progress-bar{background:var(--line)}progress::-webkit-progress-value{background:var(--blue);border-radius:10px}progress::-moz-progress-bar{background:var(--blue)}progress:not([value]){background:linear-gradient(90deg,var(--line),var(--blue),var(--line));background-size:200%;animation:loading 1.4s linear infinite}@keyframes loading{to{background-position:200% 0}}details{font-size:12px;color:var(--muted);margin-top:14px}summary{cursor:pointer;width:fit-content}code{display:block;overflow-wrap:anywhere;margin-top:8px}a.save{display:inline-block;font-size:12px;padding:6px 10px;margin-left:10px;background:var(--soft);color:var(--blue)}footer{color:var(--muted);font-size:12px;text-align:center;margin:24px 0 36px}[hidden]{display:none!important}
+@media(prefers-color-scheme:dark){:root{--bg:#101722;--panel:#192331;--text:#edf2fa;--muted:#a1afc2;--line:#303e50;--blue:#76a9ff;--field:#111b29;--red:#ff9696;--soft:#263c5e}button{color:#10213c}.cancel{color:var(--red)}a.save{color:var(--blue)}}
+@media(max-width:520px){main{margin:24px auto;padding:0 14px}h1{font-size:21px}.panel,article{padding:16px}.input-row{grid-template-columns:1fr}.video-row{grid-template-columns:1fr;gap:12px}.video-row button{width:100%}header{gap:10px}.details{line-height:1.8}}
+@media(prefers-reduced-motion:reduce){progress:not([value]){animation:none}}
+</style>
+</head>
+<body><main>
+<header><span class="logo" aria-hidden="true">↓</span><div><h1>Video Downloader</h1><p>Dán liên kết. Đặt tên. Tải xuống.</p></div></header>
+<section class="panel" aria-label="Thêm video">
+<form id="form"><label for="url">Liên kết video</label><div class="input-row"><input id="url" type="url" required placeholder="Dán liên kết trang video hoặc M3U8…" autocomplete="url"><button id="scan">Lấy video</button></div></form>
+<p class="hint">Tìm video trước, sau đó đặt tên và tải xuống.</p><p id="status" role="status"></p>
+</section>
+<div class="section-title"><h2>Danh sách video</h2><span class="count" id="count">0</span></div>
+<div class="empty" id="empty"><strong>Chưa có video</strong><p>Dán liên kết vào ô phía trên để bắt đầu.</p></div>
+<section id="results" aria-label="Danh sách video"></section>
+<footer>Chỉ tải video bạn sở hữu hoặc được phép sử dụng.</footer>
+</main>
 <script>
-const statusEl=document.querySelector('#status'),results=document.querySelector('#results');
-async function api(url,options={}){const r=await fetch(url,options);const d=await r.json();if(!r.ok)throw Error(typeof d.detail==='string'?d.detail:'Yêu cầu thất bại');return d;}
+const statusEl=document.querySelector('#status'), results=document.querySelector('#results');
+async function api(url, options={}) {
+  const r=await fetch(url,options), d=await r.json();
+  if(!r.ok) throw Error(typeof d.detail==='string'?d.detail:'Yêu cầu thất bại');
+  return d;
+}
 function bytes(n) {
   if (!Number.isFinite(n) || n < 0) return '—';
-  const units = ['B', 'KB', 'MB', 'GB']; let i = 0;
-  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
-  return `${n.toFixed(i ? 2 : 0)} ${units[i]}`;
+  const units=['B','KB','MB','GB']; let i=0;
+  while(n>=1024 && i<units.length-1){n/=1024;i++;}
+  return `${n.toFixed(i?2:0)} ${units[i]}`;
 }
 function eta(n) {
-  if (!Number.isFinite(n) || n < 0) return '—';
-  n = Math.ceil(n);
-  return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`;
+  if(!Number.isFinite(n)||n<0) return '—';
+  n=Math.ceil(n);return `${Math.floor(n/60)}:${String(n%60).padStart(2,'0')}`;
 }
-function renderProgress(state, bar, details, message) {
-  bar.hidden = false;
-  if (Number.isFinite(state.percent)) bar.value = state.percent;
+function renderProgress(state,bar,details,message) {
+  bar.hidden=false;
+  if(Number.isFinite(state.percent)) bar.value=state.percent;
   else bar.removeAttribute('value');
-  const percent = Number.isFinite(state.percent) ? `${state.estimated && state.status === 'downloading' ? '≈ ' : ''}${state.percent.toFixed(1)}%` : 'Chưa rõ tổng dung lượng';
-  message.textContent = ({queued:'Đang chờ…', downloading:'Đang tải về máy chủ…', processing:'Đang kiểm tra và sửa video nếu cần…', cancelling:'Đang hủy tải…', cancelled:'Đã hủy tải.', done:'Đã tải xong.', error:'Tải thất bại.'})[state.status] || '';
-  details.textContent = `${percent} · ${bytes(state.downloaded_bytes)} / ${bytes(state.total_bytes)} · ${bytes(state.speed)}/s · Còn ${eta(state.eta)}`;
+  const percent=Number.isFinite(state.percent)?`${state.estimated&&state.status==='downloading'?'≈ ':''}${state.percent.toFixed(1)}%`:'Chưa rõ tổng dung lượng';
+  message.textContent=({queued:'Đang chờ…',downloading:'Đang tải về máy chủ…',processing:'Đang kiểm tra và sửa video nếu cần…',cancelling:'Đang hủy tải…',cancelled:'Đã hủy tải.',done:'Đã tải xong.',error:'Tải thất bại.'})[state.status]||'';
+  details.textContent=`${percent} · ${bytes(state.downloaded_bytes)} / ${bytes(state.total_bytes)} · ${bytes(state.speed)}/s · Còn ${eta(state.eta)}`;
 }
 function streamCard(stream) {
-  const card = document.createElement('article'), code = document.createElement('code');
-  const button = document.createElement('button'), bar = document.createElement('progress');
-  const details = document.createElement('p'), message = document.createElement('p');
-  const cancel = document.createElement('button');
-  const nameLabel = document.createElement('label'), nameInput = document.createElement('input');
-  nameLabel.textContent = 'Tên video: ';
-  nameInput.type = 'text'; nameInput.maxLength = 200;
-  nameInput.placeholder = 'Nhập tên video (không cần đuôi file)';
-  nameInput.setAttribute('aria-label', 'Tên video');
-  nameLabel.append(nameInput);
-  cancel.textContent = 'Hủy tải'; cancel.hidden = true;
-  let activeJob = null;
-  cancel.onclick = async () => {
-    if (!activeJob) return;
-    cancel.disabled = true;
-    try { await api('/api/jobs/' + activeJob + '/cancel', {method:'POST'}); }
-    catch (err) { message.textContent = err.message; cancel.disabled = false; }
-  };
-  code.textContent = stream.url; button.textContent = 'Tải video';
-  bar.max = 100; bar.hidden = true; bar.setAttribute('aria-label', 'Tiến độ tải video');
-  details.className = 'details'; message.setAttribute('role', 'status');
-  button.onclick = async () => {
-    button.disabled = true; nameInput.disabled = true;
-    renderProgress({status:'queued', downloaded_bytes:0}, bar, details, message);
-    try {
-      const job = await api('/api/download/' + stream.id, {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({filename:nameInput.value})
-      });
-      activeJob = job.id; cancel.hidden = false; cancel.disabled = false;
-      for (;;) {
-        const state = await api('/api/jobs/' + job.id);
-        renderProgress(state, bar, details, message);
-        if (state.status === 'cancelled') break;
-        if (state.status === 'error') throw Error(state.error);
-        if (state.status === 'done') {
-          const a = document.createElement('a');
-          a.href = '/api/files/' + job.id; a.textContent = 'Lưu file về máy'; a.download = state.filename;
-          message.append(' ', a); break;
+  const card=document.createElement('article'),row=document.createElement('div');
+  const button=document.createElement('button'),bar=document.createElement('progress');
+  const details=document.createElement('p'),message=document.createElement('p');
+  const nameLabel=document.createElement('label'),nameInput=document.createElement('input');
+  const source=document.createElement('details'),summary=document.createElement('summary'),code=document.createElement('code');
+  const number=document.createElement('div');
+  number.className='row-label';number.textContent=`VIDEO ${String(results.children.length+1).padStart(2,'0')}`;
+  nameLabel.textContent='Tên video';nameInput.type='text';nameInput.maxLength=200;
+  nameInput.placeholder='Nhập tên video';nameInput.setAttribute('aria-label','Tên video');nameLabel.append(nameInput);
+  row.className='video-row';button.className='action';button.textContent='Tải xuống';
+  bar.max=100;bar.hidden=true;bar.setAttribute('aria-label','Tiến độ tải video');
+  details.className='details';message.className='message';message.setAttribute('role','status');
+  summary.textContent='Liên kết nguồn';code.textContent=stream.url;source.append(summary,code);
+  let activeJob=null,starting=false;
+  button.onclick=async()=>{
+    if(starting) return;
+    if(activeJob){
+      button.disabled=true;button.textContent='Đang hủy…';
+      try{await api('/api/jobs/'+activeJob+'/cancel',{method:'POST'});}
+      catch(err){message.textContent=err.message;button.disabled=false;button.textContent='Hủy tải';}
+      return;
+    }
+    starting=true;button.disabled=true;button.textContent='Đang bắt đầu…';nameInput.disabled=true;
+    renderProgress({status:'queued',downloaded_bytes:0},bar,details,message);
+    try{
+      const job=await api('/api/download/'+stream.id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:nameInput.value})});
+      activeJob=job.id;starting=false;button.disabled=false;button.classList.add('cancel');button.textContent='Hủy tải';
+      for(;;){
+        const state=await api('/api/jobs/'+job.id);
+        renderProgress(state,bar,details,message);
+        if(state.status==='cancelled') break;
+        if(state.status==='error') throw Error(state.error);
+        if(state.status==='done'){
+          const a=document.createElement('a');a.className='save';a.href='/api/files/'+job.id;a.textContent='Lưu file về máy';a.download=state.filename;
+          message.append(a);break;
         }
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve=>setTimeout(resolve,1000));
       }
-    } catch (err) { message.textContent = err.message; }
-    finally { button.disabled = false; nameInput.disabled = false; cancel.hidden = true; activeJob = null; }
+    }catch(err){message.textContent=err.message;}
+    finally{starting=false;activeJob=null;button.disabled=false;button.textContent='Tải xuống';button.classList.remove('cancel');nameInput.disabled=false;}
   };
-  card.append(code, nameLabel, document.createElement('br'), button, cancel, bar, details, message);
+  row.append(nameLabel,button);card.append(number,row,bar,message,details,source);
   return card;
 }
-document.querySelector('#form').onsubmit = async e => {
-  e.preventDefault();
-  const button = document.querySelector('#scan');
-  button.disabled = true; statusEl.textContent = 'Đang mở trang và tìm video…';
-  try {
-    const data = await api('/api/scan', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url:document.querySelector('#url').value})});
-    statusEl.textContent = data.message || `Tìm thấy ${data.streams.length} playlist.`;
-    for (const stream of data.streams) results.append(streamCard(stream));
-  } catch (err) { statusEl.textContent = err.message; }
-  finally { button.disabled = false; }
+document.querySelector('#form').onsubmit=async e=>{
+  e.preventDefault();const button=document.querySelector('#scan');button.disabled=true;button.textContent='Đang tìm…';statusEl.textContent='Đang mở trang và tìm video…';
+  try{
+    const data=await api('/api/scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:document.querySelector('#url').value})});
+    statusEl.textContent=data.message||`Tìm thấy ${data.streams.length} video. Nhập tên rồi bấm Tải xuống.`;
+    for(const stream of data.streams) results.append(streamCard(stream));
+    document.querySelector('#count').textContent=results.children.length;
+    document.querySelector('#empty').hidden=results.children.length>0;
+  }catch(err){statusEl.textContent=err.message;}
+  finally{button.disabled=false;button.textContent='Lấy video';}
 };
-</script></html>
+</script>
+</body></html>

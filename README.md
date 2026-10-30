@@ -33,7 +33,7 @@ docker run -d --name hls-web --init --restart unless-stopped \
 
 Docker Hub lưu image; web chạy trên máy thực thi lệnh Docker. Nếu repository Docker Hub là private, cần `docker login` trước khi pull/chạy.
 
-Mở trình duyệt trên máy chạy Docker, vào cổng **8000**, nhập URL trang video, nhấn **Tìm M3U8**, chọn **Tải video**, rồi **Lưu file về máy**. Compose chỉ mở cổng trên loopback. Không đưa dịch vụ lên Internet: chưa có xác thực và chưa được gia cố để xử lý người dùng không tin cậy.
+Mở trình duyệt trên máy chạy Docker, vào cổng **8000**, nhập URL trang video, nhấn **Lấy video**, chọn **Tải xuống**, rồi **Lưu file về máy**. Compose chỉ mở cổng trên loopback. Không đưa dịch vụ lên Internet: chưa có xác thực và chưa được gia cố để xử lý người dùng không tin cậy.
 
 File được lưu trong volume `downloads`. Các phiên quét và trạng thái tải nằm trong RAM, mất khi khởi động lại; file đã tải vẫn còn trong volume. Xóa volume bằng `docker compose down -v` khi muốn xóa toàn bộ video. Không tự động dọn file. Mỗi file giới hạn dự kiến 2 GB, mỗi job tối đa 30 phút; giới hạn dung lượng không thay thế quota ổ đĩa.
 
@@ -43,11 +43,13 @@ Không phải mọi trang video đều dùng HLS. Trang chỉ dùng DASH/MP4, n�
 
 ## Tiến độ tải
 
-Sau khi tìm được playlist, nhập **Tên video** rồi nhấn **Tải video**. Không cần nhập đuôi file: ứng dụng tự dùng đuôi của file thực tế, kể cả MP4 sau bước sửa đầu PNG. Để trống sẽ dùng `video`. Tên được áp dụng cho cả file trong volume (mỗi tác vụ có thư mục riêng) và file lưu về trình duyệt. Ký tự không hợp lệ được làm sạch; tên tối đa 200 ký tự đầu vào và được rút gọn để phù hợp giới hạn tên file.
+Giao diện dùng một nút cho mỗi video: **Tải xuống → Hủy tải → Tải xuống** sau khi hủy hoặc hoàn tất. Khi xong, nhấn **Lưu file về máy** để lưu video. Ô tên, tiến độ và tốc độ nằm cùng một kết quả; URL dài được thu gọn trong **Liên kết nguồn**. Giao diện tự đổi sáng/tối theo thiết bị và bố trí lại trên điện thoại.
+
+Sau khi tìm được playlist, nhập **Tên video** rồi nhấn **Tải xuống**. Không cần nhập đuôi file: ứng dụng tự dùng đuôi của file thực tế, kể cả MP4 sau bước sửa đầu PNG. Để trống sẽ dùng `video`. Tên được áp dụng cho cả file trong volume (mỗi tác vụ có thư mục riêng) và file lưu về trình duyệt. Ký tự không hợp lệ được làm sạch; tên tối đa 200 ký tự đầu vào và được rút gọn để phù hợp giới hạn tên file.
 
 Sau khi tải xong, ứng dụng đọc tối đa 2 MB đầu file để phát hiện chữ ký PNG và ít nhất 6 byte đồng bộ MPEG-TS cách nhau 188 byte. Nếu khớp, FFmpeg bỏ phần đầu PNG rồi đóng gói lại thành MP4 bằng `-c copy` (không mã hóa lại), bật `faststart` và kiểm tra bằng FFprobe: phải có video và thời lượng dương. Chỉ sau khi kiểm tra thành công mới thay file gốc và cho tải về. Nếu sửa lỗi thất bại, tác vụ báo lỗi và giữ file gốc; hủy tác vụ sẽ xóa file dở theo cơ chế hủy thông thường. File không có đầu PNG giữ nguyên. Đây là bước xử lý các file do ứng dụng tải mới; không tự quét thư mục MeTube `/mnt/metube`.
 
-Nhấn **Hủy tải** để hủy tác vụ đang chờ, đang tải hoặc đang xử lý. Ứng dụng dừng tiến trình tải và các tiến trình con, xóa thư mục file tải dở rồi hiển thị **Đã hủy tải**. Có thể nhấn **Tải video** để tải lại từ đầu. Nút này không xóa video đã tải thành công. Các kết quả quét được giữ lại khi quét thêm URL để không mất nút hủy của tác vụ đang chạy.
+Nhấn **Hủy tải** để hủy tác vụ đang chờ, đang tải hoặc đang xử lý. Ứng dụng dừng tiến trình tải và các tiến trình con, xóa thư mục file tải dở rồi hiển thị **Đã hủy tải**. Có thể nhấn **Tải xuống** để tải lại từ đầu. Nút này không xóa video đã tải thành công. Các kết quả quét được giữ lại khi quét thêm URL để không mất nút hủy của tác vụ đang chạy.
 
 Ứng dụng tải tối đa 8 đoạn HLS song song bằng yt-dlp (trước đây tải tuần tự). Có thể chỉnh biến môi trường `HLS_CONCURRENT_FRAGMENTS` từ 1 đến 32; thử 16 nếu nguồn cho phép, hoặc giảm xuống 2–4 nếu gặp HTTP 429/403. Tốc độ còn phụ thuộc máy chủ nguồn, đường truyền và ổ đĩa; tăng số đoạn không bảo đảm tăng tốc theo cùng tỷ lệ.
 
