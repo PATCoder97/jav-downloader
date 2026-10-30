@@ -1,0 +1,80 @@
+name: Build, test and publish Docker image
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build test image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: hls-web:test
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Test Chromium discovery, download and web UI
+        run: |
+          docker run --rm --init --shm-size=1g \
+            --mount "type=bind,src=$GITHUB_WORKSPACE/tests,dst=/tmp/tests,readonly" \
+            --entrypoint python \
+            hls-web:test -m unittest discover -s /tmp/tests -v
+
+      - name: Check Docker Hub configuration
+        if: github.event_name != 'pull_request'
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo '::error::Add DOCKERHUB_USERNAME and DOCKERHUB_TOKEN in repository Actions secrets.'
+            exit 1
+          fi
+
+      - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Image tags
+        if: github.event_name != 'pull_request'
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_REPOSITORY || 'jav-downloader' }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=tag
+            type=sha,format=long
+
+      - name: Publish tested image to Docker Hub
+        if: github.event_name != 'pull_request'
+        env:
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            docker tag hls-web:test "$tag"
+            docker push "$tag"
+          done <<< "$IMAGE_TAGS"
