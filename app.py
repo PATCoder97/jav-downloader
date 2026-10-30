@@ -72,13 +72,33 @@ async def read_video_code(page):
     try:
         return await page.evaluate(r'''() => {
             const clean = text => (text || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+            const guess = text => {
+                const skip = new Set(['VIDEO', 'PART', 'EPISODE', 'SEASON', 'YEAR', 'VERSION',
+                    'HD', 'FULLHD', 'UHD', 'HDTV', 'CODEC', 'RESOLUTION', 'QUALITY', 'BITRATE',
+                    'FPS', 'CHAPTER', 'VOLUME', 'VOL', 'COPYRIGHT', 'SIZE', 'MP']);
+                const normalized = (text || '').normalize('NFKC').replace(/[\u2010-\u2015\u2212]/g, '-');
+                const matches = normalized.matchAll(/\b([A-Z][A-Z0-9]{1,15}?)[\s_-]*(\d{3,10})\b/gi);
+                for (const match of matches) {
+                    const prefix = match[1].toUpperCase();
+                    if (!skip.has(prefix)) return prefix + '-' + match[2];
+                }
+                return '';
+            };
             const element = document.querySelector('#video > div.video-info > span.video-code')
                 || document.querySelector('.video-code');
             const code = clean(element?.textContent);
-            if (code) return code;
-            for (const paragraph of document.querySelectorAll('#film-content-wrapper > p')) {
+            if (code) return guess(code) || code;
+            const paragraphs = [...document.querySelectorAll('#film-content-wrapper > p')];
+            for (const paragraph of paragraphs) {
                 const match = (paragraph.textContent || '').match(/\[([^\[\]]*)\]/);
-                if (match) return clean(match[1]);
+                if (match) return guess(match[1]) || clean(match[1]);
+            }
+            const candidates = [...paragraphs.map(p => p.textContent),
+                document.querySelector('meta[property="og:title"]')?.content,
+                document.querySelector('h1')?.textContent, document.title];
+            for (const text of candidates) {
+                const candidate = guess(text);
+                if (candidate) return candidate;
             }
             return '';
         }''')

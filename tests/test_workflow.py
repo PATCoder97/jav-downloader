@@ -66,6 +66,20 @@ class Workflow(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(await app.read_video_code(page), 'PRIMARY-123')
                 await page.set_content('<span class="video-code"> </span><div id="film-content-wrapper"><p>[FALLBACK-456]</p></div>')
                 self.assertEqual(await app.read_video_code(page), 'FALLBACK-456')
+                guesses = [
+                    ('<div id="film-content-wrapper"><p>FC2PPV 4329599 Example video description</p></div>', 'FC2PPV-4329599'),
+                    ('<title>DEMO123 Sample title</title>', 'DEMO-123'),
+                    ('<h1>demo_001 Sample title</h1>', 'DEMO-001'),
+                    ('<meta property="og:title" content="SAMPLE 456 A title">', 'SAMPLE-456'),
+                    ('<h1>SAMPLE–789 Example</h1>', 'SAMPLE-789'),
+                    ('<title>Video 2026 1080p 1920x1080 H264</title>', ''),
+                    ('<h1>Example without an identifier</h1>', ''),
+                    ('<span class="video-code">PRIMARY-123</span><title>FALLBACK456</title>', 'PRIMARY-123'),
+                ]
+                for markup, expected in guesses:
+                    with self.subTest(markup=markup):
+                        await page.set_content(markup)
+                        self.assertEqual(await app.read_video_code(page), expected)
             finally:
                 await browser.close()
 
