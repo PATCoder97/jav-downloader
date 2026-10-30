@@ -43,6 +43,8 @@ Không phải mọi trang video đều dùng HLS. Trang chỉ dùng DASH/MP4, n�
 
 ## Tiến độ tải
 
+Nhấn **Hủy tải** để hủy tác vụ đang chờ, đang tải hoặc đang xử lý. Ứng dụng dừng tiến trình tải và các tiến trình con, xóa thư mục file tải dở rồi hiển thị **Đã hủy tải**. Có thể nhấn **Tải video** để tải lại từ đầu. Nút này không xóa video đã tải thành công. Các kết quả quét được giữ lại khi quét thêm URL để không mất nút hủy của tác vụ đang chạy.
+
 Ứng dụng tải tối đa 8 đoạn HLS song song bằng yt-dlp (trước đây tải tuần tự). Có thể chỉnh biến môi trường `HLS_CONCURRENT_FRAGMENTS` từ 1 đến 32; thử 16 nếu nguồn cho phép, hoặc giảm xuống 2–4 nếu gặp HTTP 429/403. Tốc độ còn phụ thuộc máy chủ nguồn, đường truyền và ổ đĩa; tăng số đoạn không bảo đảm tăng tốc theo cùng tỷ lệ.
 
 Mỗi video có thanh tiến độ, phần trăm, dung lượng đã tải/tổng dung lượng, tốc độ và thời gian còn lại; cập nhật khoảng mỗi giây. Đây là tiến độ tải về máy chủ Docker. Bước **Lưu file về máy** do trình duyệt quản lý riêng. Với HLS, tổng dung lượng và ETA có thể chỉ là ước tính (hiển thị `≈`); khi chưa có dữ liệu thì hiển thị `—` hoặc thanh chờ. Sau khi tải đủ dữ liệu, ứng dụng hiển thị trạng thái xử lý video và chỉ cung cấp file khi hoàn tất.

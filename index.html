@@ -24,13 +24,22 @@ function renderProgress(state, bar, details, message) {
   if (Number.isFinite(state.percent)) bar.value = state.percent;
   else bar.removeAttribute('value');
   const percent = Number.isFinite(state.percent) ? `${state.estimated && state.status === 'downloading' ? '≈ ' : ''}${state.percent.toFixed(1)}%` : 'Chưa rõ tổng dung lượng';
-  message.textContent = ({queued:'Đang chờ…', downloading:'Đang tải về máy chủ…', processing:'Đang xử lý video…', done:'Đã tải xong.', error:'Tải thất bại.'})[state.status] || '';
+  message.textContent = ({queued:'Đang chờ…', downloading:'Đang tải về máy chủ…', processing:'Đang xử lý video…', cancelling:'Đang hủy tải…', cancelled:'Đã hủy tải.', done:'Đã tải xong.', error:'Tải thất bại.'})[state.status] || '';
   details.textContent = `${percent} · ${bytes(state.downloaded_bytes)} / ${bytes(state.total_bytes)} · ${bytes(state.speed)}/s · Còn ${eta(state.eta)}`;
 }
 function streamCard(stream) {
   const card = document.createElement('article'), code = document.createElement('code');
   const button = document.createElement('button'), bar = document.createElement('progress');
   const details = document.createElement('p'), message = document.createElement('p');
+  const cancel = document.createElement('button');
+  cancel.textContent = 'Hủy tải'; cancel.hidden = true;
+  let activeJob = null;
+  cancel.onclick = async () => {
+    if (!activeJob) return;
+    cancel.disabled = true;
+    try { await api('/api/jobs/' + activeJob + '/cancel', {method:'POST'}); }
+    catch (err) { message.textContent = err.message; cancel.disabled = false; }
+  };
   code.textContent = stream.url; button.textContent = 'Tải video';
   bar.max = 100; bar.hidden = true; bar.setAttribute('aria-label', 'Tiến độ tải video');
   details.className = 'details'; message.setAttribute('role', 'status');
@@ -39,9 +48,11 @@ function streamCard(stream) {
     renderProgress({status:'queued', downloaded_bytes:0}, bar, details, message);
     try {
       const job = await api('/api/download/' + stream.id, {method:'POST'});
+      activeJob = job.id; cancel.hidden = false; cancel.disabled = false;
       for (;;) {
         const state = await api('/api/jobs/' + job.id);
         renderProgress(state, bar, details, message);
+        if (state.status === 'cancelled') break;
         if (state.status === 'error') throw Error(state.error);
         if (state.status === 'done') {
           const a = document.createElement('a');
@@ -51,15 +62,15 @@ function streamCard(stream) {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     } catch (err) { message.textContent = err.message; }
-    finally { button.disabled = false; }
+    finally { button.disabled = false; cancel.hidden = true; activeJob = null; }
   };
-  card.append(code, button, bar, details, message);
+  card.append(code, button, cancel, bar, details, message);
   return card;
 }
 document.querySelector('#form').onsubmit = async e => {
   e.preventDefault();
   const button = document.querySelector('#scan');
-  button.disabled = true; results.replaceChildren(); statusEl.textContent = 'Đang mở trang và tìm video…';
+  button.disabled = true; statusEl.textContent = 'Đang mở trang và tìm video…';
   try {
     const data = await api('/api/scan', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url:document.querySelector('#url').value})});
     statusEl.textContent = data.message || `Tìm thấy ${data.streams.length} playlist.`;

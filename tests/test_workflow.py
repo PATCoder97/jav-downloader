@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 import socket
+import sys
 import tempfile
 import threading
 import time
@@ -19,6 +20,46 @@ from playwright.async_api import async_playwright
 
 
 class Workflow(unittest.IsolatedAsyncioTestCase):
+    async def test_cancel_queued_and_not_started(self):
+        app.streams['cancel-test'] = {'url': 'https://example.com/video.m3u8', 'headers': {}}
+        for start in (False, True):
+            with patch.object(app, 'gate', asyncio.Semaphore(0)):
+                job = await app.start_download('cancel-test')
+                if start:
+                    await asyncio.sleep(0)
+                result = await app.cancel_download(job['id'])
+                self.assertEqual(result['status'], 'cancelled')
+                self.assertEqual((await app.cancel_download(job['id']))['status'], 'cancelled')
+
+    async def test_cancel_running_process_and_remove_partial(self):
+        original_spawn = asyncio.create_subprocess_exec
+        processes = []
+
+        async def spawn(*args, **kwargs):
+            process = await original_spawn(sys.executable, '-c',
+                'import time; print(\'__PROGRESS__{"status":"downloading","downloaded_bytes":10}\', flush=True); time.sleep(600)', **kwargs)
+            processes.append(process)
+            return process
+
+        async def valid(url):
+            return url
+
+        with tempfile.TemporaryDirectory() as tmp, patch.object(app, 'DOWNLOADS', Path(tmp)), patch.object(app, 'public_url', valid), patch.object(asyncio, 'create_subprocess_exec', spawn):
+            app.streams['running-test'] = {'url': 'https://example.com/video.m3u8', 'headers': {}}
+            job = await app.start_download('running-test')
+            key = job['id']
+            for _ in range(200):
+                if app.jobs[key].get('downloaded_bytes') == 10:
+                    break
+                await asyncio.sleep(0.01)
+            self.assertEqual(app.jobs[key].get('downloaded_bytes'), 10)
+            (Path(tmp) / key / 'video.ts.part').write_bytes(b'partial')
+            self.assertEqual((await app.cancel_download(key))['status'], 'cancelled')
+            self.assertIsNotNone(processes[0].returncode)
+            self.assertFalse((Path(tmp) / key).exists())
+            with self.assertRaises(app.HTTPException):
+                await app.file_download(key)
+
     async def test_fragment_concurrency_setting(self):
         for value, expected in [('1', 1), ('8', 8), ('16', 16), ('0', 1), ('100', 32), ('invalid', 8)]:
             with patch.dict(os.environ, {'HLS_CONCURRENT_FRAGMENTS': value}):
@@ -135,13 +176,18 @@ class Workflow(unittest.IsolatedAsyncioTestCase):
                                 self.assertTrue(rendered['indeterminate'])
                                 await page.locator('#url').fill(base + '/index.html')
                                 await page.locator('#scan').click()
-                                await page.locator('article button').click(timeout=45000)
+                                await page.get_by_role('button', name='Tải video', exact=True).click(timeout=45000)
                                 link = page.get_by_role('link', name='Lưu file về máy')
                                 await link.wait_for(timeout=30000)
                                 self.assertEqual(await page.locator('article progress').get_attribute('value'), '100')
                                 saved = await page.request.get(f'http://127.0.0.1:{web_port}' + await link.get_attribute('href'))
                                 self.assertEqual(saved.status, 200)
                                 self.assertGreater(len(await saved.body()), 1000)
+                                with patch.object(app, 'gate', asyncio.Semaphore(0)):
+                                    await page.get_by_role('button', name='Tải video', exact=True).click()
+                                    await page.get_by_role('button', name='Hủy tải', exact=True).click()
+                                    await page.get_by_text('Đã hủy tải.', exact=True).wait_for(timeout=10000)
+                                    self.assertTrue(await page.get_by_role('button', name='Tải video', exact=True).is_enabled())
                             finally:
                                 await browser.close()
                     finally:

@@ -2,6 +2,8 @@ import asyncio
 import ipaddress
 import json
 import math
+import shutil
+import signal
 import os
 import socket
 import uuid
@@ -17,6 +19,7 @@ app = FastAPI()
 ROOT = Path(__file__).parent
 DOWNLOADS = Path(os.environ.get('DOWNLOAD_DIR', '/downloads'))
 jobs = {}
+tasks = {}
 streams = {}
 gate = asyncio.Semaphore(2)
 
@@ -146,6 +149,14 @@ def fragment_concurrency():
 
 
 async def download(key, stream):
+    try:
+        await run_download(key, stream)
+    except asyncio.CancelledError:
+        await asyncio.to_thread(shutil.rmtree, DOWNLOADS / key, True)
+        jobs[key].update(status='cancelled', speed=None, eta=None)
+
+
+async def run_download(key, stream):
     async with gate:
         jobs[key]['status'] = 'downloading'
         target = DOWNLOADS / key
@@ -158,7 +169,14 @@ async def download(key, stream):
         process = None
         try:
             await public_url(stream['url'])
-            process = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+            spawn = asyncio.create_task(asyncio.create_subprocess_exec(
+                *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+                start_new_session=True))
+            try:
+                process = await asyncio.shield(spawn)
+            except asyncio.CancelledError:
+                process = await spawn
+                raise
             async with asyncio.timeout(1800):
                 async for line in process.stdout:
                     update_progress(jobs[key], line.decode('utf-8', errors='replace').strip())
@@ -167,10 +185,15 @@ async def download(key, stream):
             if process.returncode or len(files) != 1:
                 raise ValueError('Tải thất bại: link có thể hết hạn, cần cookie hoặc FFmpeg, hoặc bị giới hạn truy cập.')
             jobs[key].update(status='done', percent=100, eta=0, speed=None, file=str(files[0]), filename=files[0].name)
-        except Exception as e:
-            if process and process.returncode is None:
-                process.kill()
+        except BaseException as e:
+            if process:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
                 await process.wait()
+            if not isinstance(e, Exception):
+                raise
             jobs[key].update(status='error', error=str(e) or 'Quá thời gian tải.')
 
 
@@ -178,12 +201,36 @@ async def download(key, stream):
 async def start_download(stream_id: str):
     if stream_id not in streams:
         raise HTTPException(404, 'Link đã hết phiên. Hãy quét lại.')
-    if sum(j['status'] in ('queued', 'downloading', 'processing') for j in jobs.values()) >= 4:
+    if sum(j['status'] in ('queued', 'downloading', 'processing', 'cancelling') for j in jobs.values()) >= 4:
         raise HTTPException(429, 'Hàng đợi đầy, hãy chờ tải xong.')
     key = uuid.uuid4().hex
     jobs[key] = {'status': 'queued', 'percent': None, 'downloaded_bytes': 0, 'total_bytes': None, 'speed': None, 'eta': None}
-    asyncio.create_task(download(key, streams[stream_id]))
+    tasks[key] = asyncio.create_task(download(key, streams[stream_id]))
+    tasks[key].add_done_callback(lambda task: tasks.pop(key, None))
     return {'id': key}
+
+
+@app.post('/api/jobs/{key}/cancel')
+async def cancel_download(key: str):
+    if key not in jobs:
+        raise HTTPException(404)
+    job = jobs[key]
+    if job['status'] in ('done', 'error', 'cancelled'):
+        return {'status': job['status']}
+    task = tasks.get(key)
+    if task:
+        if job['status'] != 'cancelling':
+            job['status'] = 'cancelling'
+            task.cancel()
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            pass
+    # A queued task can be cancelled before its coroutine starts.
+    if job['status'] not in ('done', 'error', 'cancelled'):
+        await asyncio.to_thread(shutil.rmtree, DOWNLOADS / key, True)
+        job.update(status='cancelled', speed=None, eta=None)
+    return {'status': job['status']}
 
 
 @app.get('/api/jobs/{key}')
