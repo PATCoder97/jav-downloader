@@ -138,12 +138,20 @@ def update_progress(job, line):
                speed=number('speed'), eta=number('eta'))
 
 
+def fragment_concurrency():
+    try:
+        return max(1, min(32, int(os.environ.get('HLS_CONCURRENT_FRAGMENTS', '8'))))
+    except ValueError:
+        return 8
+
+
 async def download(key, stream):
     async with gate:
         jobs[key]['status'] = 'downloading'
         target = DOWNLOADS / key
         target.mkdir(parents=True, exist_ok=True)
         args = ['yt-dlp', '--ignore-config', '--no-playlist', '--quiet', '--progress', '--newline', '--progress-template', 'download:__PROGRESS__%(progress)j', '--socket-timeout', '20', '--retries', '2', '--hls-prefer-native', '--restrict-filenames', '--max-filesize', '2G', '-o', str(target / 'video.%(ext)s')]
+        args += ['--concurrent-fragments', str(fragment_concurrency())]
         for name, value in stream['headers'].items():
             args += ['--add-header', f'{name}:{value}']
         args += ['--', stream['url']]

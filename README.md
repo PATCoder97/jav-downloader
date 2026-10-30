@@ -43,11 +43,13 @@ Không phải mọi trang video đều dùng HLS. Trang chỉ dùng DASH/MP4, n�
 
 ## Tiến độ tải
 
+Ứng dụng tải tối đa 8 đoạn HLS song song bằng yt-dlp (trước đây tải tuần tự). Có thể chỉnh biến môi trường `HLS_CONCURRENT_FRAGMENTS` từ 1 đến 32; thử 16 nếu nguồn cho phép, hoặc giảm xuống 2–4 nếu gặp HTTP 429/403. Tốc độ còn phụ thuộc máy chủ nguồn, đường truyền và ổ đĩa; tăng số đoạn không bảo đảm tăng tốc theo cùng tỷ lệ.
+
 Mỗi video có thanh tiến độ, phần trăm, dung lượng đã tải/tổng dung lượng, tốc độ và thời gian còn lại; cập nhật khoảng mỗi giây. Đây là tiến độ tải về máy chủ Docker. Bước **Lưu file về máy** do trình duyệt quản lý riêng. Với HLS, tổng dung lượng và ETA có thể chỉ là ước tính (hiển thị `≈`); khi chưa có dữ liệu thì hiển thị `—` hoặc thanh chờ. Sau khi tải đủ dữ liệu, ứng dụng hiển thị trạng thái xử lý video và chỉ cung cấp file khi hoàn tất.
 
 ## Kiểm thử
 
-Test tạo video màu xanh dài 2 giây bằng FFmpeg, phục vụ trang HTML có JavaScript phát sinh request M3U8, chạy Chromium thật để phát hiện rồi tải bằng yt-dlp thật và kiểm tra thời lượng bằng ffprobe. Chỉ trong test, bộ kiểm tra URL được thay để cho phép máy chủ fixture loopback.
+Test tạo video màu xanh dài 4 giây gồm nhiều đoạn HLS bằng FFmpeg, phục vụ trang HTML có JavaScript phát sinh request M3U8, chạy Chromium thật để phát hiện rồi tải bằng yt-dlp thật và kiểm tra thời lượng bằng ffprobe. Máy chủ fixture tạo độ trễ cho segment và kiểm tra có nhiều request tải đồng thời. Chỉ trong test, bộ kiểm tra URL được thay để cho phép máy chủ fixture loopback.
 
 ```sh
 docker build -t hls-web .

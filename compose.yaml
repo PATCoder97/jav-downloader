@@ -6,6 +6,8 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     shm_size: 1gb
+    environment:
+      HLS_CONCURRENT_FRAGMENTS: "8"
     volumes:
       - downloads:/downloads
     restart: unless-stopped

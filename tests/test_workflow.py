@@ -9,6 +9,7 @@ import subprocess
 import socket
 import tempfile
 import threading
+import time
 import unittest
 from unittest.mock import patch
 
@@ -18,6 +19,11 @@ from playwright.async_api import async_playwright
 
 
 class Workflow(unittest.IsolatedAsyncioTestCase):
+    async def test_fragment_concurrency_setting(self):
+        for value, expected in [('1', 1), ('8', 8), ('16', 16), ('0', 1), ('100', 32), ('invalid', 8)]:
+            with patch.dict(os.environ, {'HLS_CONCURRENT_FRAGMENTS': value}):
+                self.assertEqual(app.fragment_concurrency(), expected)
+
     async def test_progress_records(self):
         job = {}
         app.update_progress(job, '__PROGRESS__' + json.dumps({'status': 'downloading', 'downloaded_bytes': 1024, 'total_bytes': 4096, 'speed': 2048, 'eta': 2}))
@@ -46,9 +52,27 @@ class Workflow(unittest.IsolatedAsyncioTestCase):
     async def test_scan_download_and_probe(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'color=c=blue:s=160x90:r=10', '-t', '2', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-f', 'hls', '-hls_time', '1', str(root / 'sample.m3u8')], check=True)
+            subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'color=c=blue:s=160x90:r=10', '-t', '4', '-c:v', 'libx264', '-g', '10', '-pix_fmt', 'yuv420p', '-f', 'hls', '-hls_time', '1', str(root / 'sample.m3u8')], check=True)
             (root / 'index.html').write_text('<html><body><video></video><script>setTimeout(()=>fetch("/sample.m3u8"),300)</script></body></html>')
-            handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=tmp)
+            activity = {'active': 0, 'peak': 0}
+            lock = threading.Lock()
+
+            class SegmentHandler(http.server.SimpleHTTPRequestHandler):
+                def do_GET(self):
+                    if not self.path.endswith('.ts'):
+                        return super().do_GET()
+                    with lock:
+                        activity['active'] += 1
+                        activity['peak'] = max(activity['peak'], activity['active'])
+                    try:
+                        # Simulate segment latency and verify requests overlap.
+                        time.sleep(0.15)
+                        super().do_GET()
+                    finally:
+                        with lock:
+                            activity['active'] -= 1
+
+            handler = functools.partial(SegmentHandler, directory=tmp)
             server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), handler)
             worker = threading.Thread(target=server.serve_forever, daemon=True)
             worker.start()
@@ -62,7 +86,7 @@ class Workflow(unittest.IsolatedAsyncioTestCase):
             try:
                 # Test-only fixture exception; production still rejects loopback.
                 # Fixture traffic stays inside this container; no Internet requests.
-                with patch.object(app, 'public_url', fixture_only), patch.object(app, 'DOWNLOADS', root / 'downloads'), patch.dict(os.environ, {'HTTPS_PROXY': '', 'HTTP_PROXY': ''}):
+                with patch.object(app, 'public_url', fixture_only), patch.object(app, 'DOWNLOADS', root / 'downloads'), patch.dict(os.environ, {'HTTPS_PROXY': '', 'HTTP_PROXY': '', 'HLS_CONCURRENT_FRAGMENTS': '8'}):
                     result = await app.scan(app.URLInput(url=base + '/index.html'))
                     self.assertEqual(len(result['streams']), 1)
                     stream = result['streams'][0]
@@ -71,6 +95,7 @@ class Workflow(unittest.IsolatedAsyncioTestCase):
                     app.jobs[key] = {'status': 'queued'}
                     await app.download(key, app.streams[stream['id']])
                     self.assertEqual(app.jobs[key]['status'], 'done', app.jobs[key])
+                    self.assertGreater(activity['peak'], 1, 'HLS segment requests must overlap')
                     self.assertGreater(app.jobs[key]['downloaded_bytes'], 0)
                     self.assertEqual(app.jobs[key]['percent'], 100)
                     output = app.jobs[key]['file']
